@@ -87,7 +87,7 @@ export const env = {
   adminEmails: list('ADMIN_EMAILS').map((e) => e.toLowerCase()),
   allowDevAuth: bool('ALLOW_DEV_AUTH', !firebaseAvailable),
   devAdmin: {
-    email: str('DEV_ADMIN_EMAIL', 'admin@grupoalcinamaria.com.br').toLowerCase(),
+    email: str('DEV_ADMIN_EMAIL', 'logisticavdpenedo@cpalcina.com').toLowerCase(),
     password: str('DEV_ADMIN_PASSWORD', 'almoxarifado'),
     name: str('DEV_ADMIN_NAME', 'Administração — Grupo Alcina Maria'),
   },

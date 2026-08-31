@@ -19,7 +19,7 @@ export default function Login() {
 
   /* Em modo de desenvolvimento já sugerimos as credenciais do .env. */
   useEffect(() => {
-    if (mode === 'dev' && !email) setEmail('admin@grupoalcinamaria.com.br');
+    if (mode === 'dev' && !email) setEmail('logisticavdpenedo@cpalcina.com');
   }, [mode, email]);
 
   if (!loading && admin) {
@@ -73,7 +73,7 @@ export default function Login() {
               required
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="voce@grupoalcinamaria.com.br"
+              placeholder="logisticavdpenedo@cpalcina.com"
             />
             <Input
               label="Senha"

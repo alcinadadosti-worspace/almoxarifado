@@ -87,8 +87,15 @@ export function createApp(): Express {
   /* ------------------------------------- frontend em produção (1 domínio) */
   // Servir o build do Vite aqui garante que o link do colaborador use o mesmo
   // domínio da aplicação, como exige o fluxo de aceite.
-  const webDist = path.resolve(process.cwd(), '../web/dist');
-  if (fs.existsSync(webDist)) {
+  // Procuramos nos dois pontos de partida possíveis (raiz do repo ou server/),
+  // porque hospedagens diferentes chamam `npm start` de lugares diferentes.
+  const webDist = [
+    path.resolve(process.cwd(), '../web/dist'),
+    path.resolve(process.cwd(), 'web/dist'),
+    path.resolve(__dirname, '../../web/dist'),
+  ].find((candidate) => fs.existsSync(candidate));
+
+  if (webDist) {
     app.use(
       express.static(webDist, {
         index: false,

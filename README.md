@@ -31,7 +31,7 @@ Admin monta a entrega  →  link único (Slack ou copiado)  →  colaborador ass
 - [API](#api)
 - [Segurança e LGPD](#segurança-e-lgpd)
 - [Design](#design)
-- [Deploy](#deploy)
+- [Deploy no Render](#deploy-no-render)
 - [Scripts](#scripts)
 
 ---
@@ -98,7 +98,7 @@ npm run dev       # API em :4000 e interface em :5173
 Abra <http://localhost:5173> e entre com:
 
 ```
-admin@grupoalcinamaria.com.br
+logisticavdpenedo@cpalcina.com
 almoxarifado
 ```
 
@@ -397,18 +397,71 @@ Paleta: dourado `#C9A050 → #E3C27E`, grafite `#0A0A0C`, off-white `#F6F3EC`, c
 
 ---
 
-## Deploy
+## Deploy no Render
 
-```bash
-npm run build     # compila server/ para dist e web/ para dist
-npm start         # sobe a API — que também serve o build do frontend
+A aplicação é **um serviço só**: o mesmo processo Node serve a API e o build do frontend, no
+mesmo domínio — que é o que o link de aceite do colaborador exige. Não há serviço separado para
+o front, nem blueprint.
+
+### 1. Criar o serviço
+
+No painel do Render: **New › Web Service** › conecte o repositório `almoxarifado`.
+
+| Campo | Valor |
+| --- | --- |
+| Language | `Node` |
+| Branch | `main` |
+| Root Directory | *(vazio — a raiz do repositório)* |
+| Build Command | `npm install --include=dev && npm run build` |
+| Start Command | `npm start` |
+| Health Check Path | `/api/health` |
+
+> `--include=dev` é obrigatório: com `NODE_ENV=production` o npm pularia `typescript` e `vite`,
+> e o build quebraria.
+
+### 2. Variáveis de ambiente
+
+Cole de uma vez em **Environment › Add from .env**:
+
+```env
+NODE_VERSION=22
+NODE_ENV=production
+ALLOW_DEV_AUTH=false
+
+APP_BASE_URL=https://SEU-SERVICO.onrender.com
+API_BASE_URL=https://SEU-SERVICO.onrender.com
+CORS_ORIGINS=https://SEU-SERVICO.onrender.com
+
+FIREBASE_PROJECT_ID=seu-projeto
+FIREBASE_STORAGE_BUCKET=seu-projeto.firebasestorage.app
+FIREBASE_SERVICE_ACCOUNT=<JSON da conta de serviço em base64>
+
+ADMIN_EMAILS=logisticavdpenedo@cpalcina.com
+FILE_SIGNING_SECRET=<string aleatória longa>
+
+ACCEPT_TOKEN_TTL_HOURS=168
+SIGNED_URL_TTL_MINUTES=15
+LOW_STOCK_THRESHOLD=5
 ```
 
-Quando `web/dist` existe, o Express o serve com fallback de SPA: **um único domínio** para painel,
-API e link de aceite (exatamente o que o fluxo pede). Aponte `APP_BASE_URL` e `API_BASE_URL` para
-esse domínio.
+A URL definitiva só aparece depois do primeiro deploy: salve, copie a URL e volte para corrigir
+`APP_BASE_URL`, `API_BASE_URL` e `CORS_ORIGINS`.
 
-Checklist de produção:
+O Slack entra depois, quando o app existir (`SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`,
+`SLACK_ADMIN_CHANNEL`) — sem ele a aplicação funciona com o link copiável.
+
+### 3. Verificar
+
+`https://SEU-SERVICO.onrender.com/api/health` deve responder:
+
+```json
+{ "ok": true, "dataDriver": "firestore", "storageDriver": "firebase", "devAuth": false }
+```
+
+Se `dataDriver` vier `"local"`, a credencial do Firebase não foi lida — o serviço estaria
+gravando em disco efêmero, que o Render apaga a cada deploy.
+
+### Checklist de produção
 
 - [ ] `NODE_ENV=production` e `ALLOW_DEV_AUTH=false`
 - [ ] `FILE_SIGNING_SECRET` aleatório
@@ -416,6 +469,16 @@ Checklist de produção:
 - [ ] `CORS_ORIGINS` com o domínio real
 - [ ] `ADMIN_EMAILS` com a equipe autorizada
 - [ ] HTTPS (as evidências de IP dependem de `X-Forwarded-For` — `trust proxy` já está ligado)
+
+> No plano gratuito o serviço hiberna após ~15 min sem acesso e a primeira requisição demora
+> cerca de 1 minuto. Para um link que vai no Slack e é aberto na hora, vale o plano pago.
+
+### Rodando localmente em modo produção
+
+```bash
+npm run build     # compila server/ e web/
+npm start         # sobe a API — que também serve o build do frontend
+```
 
 ---
 

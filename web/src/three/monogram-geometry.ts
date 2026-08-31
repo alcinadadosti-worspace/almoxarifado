@@ -43,7 +43,9 @@ export interface MonogramGeometryOptions {
 export function createMonogramGeometry({
   depth = 0.13,
   bevel = 0.009,
-  bevelSegments = 4,
+  // 2 segmentos já arredondam a aresta o suficiente para o reflexo do ouro —
+  // acima disso só multiplicamos triângulos sem ganho visível.
+  bevelSegments = 2,
 }: MonogramGeometryOptions = {}): THREE.ExtrudeGeometry {
   const solids = MONOGRAM_CONTOURS.filter((contour) => !contour.hole).map((contour) =>
     toPoints(contour.points),
@@ -67,7 +69,7 @@ export function createMonogramGeometry({
     bevelSize: bevel * 0.75,
     bevelOffset: 0,
     bevelSegments,
-    curveSegments: 2,
+    curveSegments: 1,
   });
 
   geometry.center();
