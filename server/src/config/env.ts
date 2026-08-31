@@ -33,7 +33,8 @@ function readServiceAccount(): Record<string, unknown> | null {
       console.warn('[env] FIREBASE_SERVICE_ACCOUNT inválido — ignorando.');
     }
   }
-  const filePath = str('FIREBASE_SERVICE_ACCOUNT_PATH');
+  // Sem variável definida, procuramos o arquivo padrão em server/service-account.json
+  const filePath = str('FIREBASE_SERVICE_ACCOUNT_PATH', './service-account.json');
   if (filePath) {
     const resolved = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
     if (fs.existsSync(resolved)) {

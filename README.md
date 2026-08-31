@@ -102,6 +102,11 @@ logisticavdpenedo@cpalcina.com
 almoxarifado
 ```
 
+> **Já colocou a chave em `server/service-account.json`?** A partir daí o ambiente local passa
+> a falar com o Firestore de verdade, e o login de desenvolvimento se desliga sozinho. Para
+> voltar ao modo de demonstração sem tocar na chave, crie `server/.env` com
+> `DATA_DRIVER=local` e `ALLOW_DEV_AUTH=true`.
+
 > **Sem Firebase? Funciona igual.** Na ausência de credenciais, o backend sobe com um *driver
 > local* que grava em `server/.data/*.json` e com um login de desenvolvimento assinado por HMAC.
 > A aplicação inteira — entrega, assinatura, PDF, devolução — roda de ponta a ponta. É modo de
@@ -244,6 +249,9 @@ O link vira somente leitura depois de assinado e expira sozinho.
 1. **Crie o projeto** em <https://console.firebase.google.com>.
 2. **Firestore** → criar banco (modo produção).
 3. **Authentication** → habilitar *E-mail/senha* e criar os usuários do almoxarifado/RH.
+   Depois registre um **app da Web** (⚙️ *Configurações do projeto* › *Geral* › ícone `</>`) e
+   guarde `apiKey`, `authDomain`, `projectId` e `appId` — são as variáveis `VITE_*` que fazem
+   a tela de login funcionar.
 4. **Storage (opcional)** → só se você quiser guardar os arquivos no Cloud Storage. Por
    padrão eles vão para a coleção `files` do Firestore, o que mantém o projeto no **plano
    gratuito** — o Cloud Storage exige o plano Blaze. Se criar o bucket, anote o nome exato
@@ -459,10 +467,23 @@ FIREBASE_SERVICE_ACCOUNT=<JSON da conta de serviço em base64>
 ADMIN_EMAILS=logisticavdpenedo@cpalcina.com
 FILE_SIGNING_SECRET=<string aleatória longa>
 
+# Firebase Auth do painel. ATENÇÃO: o Vite lê estas variáveis durante o BUILD,
+# então elas precisam existir no Render antes do primeiro deploy — sem elas o
+# painel sobe sem tela de login funcional.
+VITE_FIREBASE_API_KEY=...
+VITE_FIREBASE_AUTH_DOMAIN=seu-projeto.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=seu-projeto
+VITE_FIREBASE_APP_ID=1:000000000000:web:abcdef
+
 ACCEPT_TOKEN_TTL_HOURS=168
 SIGNED_URL_TTL_MINUTES=15
 LOW_STOCK_THRESHOLD=5
 ```
+
+As quatro variáveis `VITE_*` saem do Firebase: ⚙️ *Configurações do projeto* › *Geral* ›
+**Seus apps** › app da Web (crie um com o ícone `</>` se ainda não existir). Como o Vite as
+embute no pacote durante o build, **mudar qualquer uma delas exige um novo deploy** — não basta
+reiniciar o serviço.
 
 A URL definitiva só aparece depois do primeiro deploy: salve, copie a URL e volte para corrigir
 `APP_BASE_URL`, `API_BASE_URL` e `CORS_ORIGINS`.
