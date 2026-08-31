@@ -1,0 +1,16 @@
+rules_version = '2';
+
+// ---------------------------------------------------------------------------
+// ACQUA Almoxarifado — Grupo Alcina Maria
+//
+// Assinaturas (PNG) e termos assinados (PDF) são dados pessoais sensíveis.
+// Nada é público: o acesso acontece exclusivamente por URLs assinadas de curta
+// duração geradas no backend pelo Admin SDK (que ignora estas regras).
+// ---------------------------------------------------------------------------
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /signatures/{allPaths=**} { allow read, write: if false; }
+    match /terms/{allPaths=**}      { allow read, write: if false; }
+    match /{allPaths=**}            { allow read, write: if false; }
+  }
+}

@@ -1,0 +1,32 @@
+rules_version = '2';
+
+// ---------------------------------------------------------------------------
+// ACQUA Almoxarifado — Grupo Alcina Maria
+//
+// Política: NENHUM cliente escreve ou lê diretamente as coleções críticas.
+// Todo o acesso a materiais, colaboradores, entregas, movimentações e
+// configurações passa pela API (Firebase Admin SDK), que ignora estas regras.
+//
+// Motivos:
+//  - `deliveries` guarda CPF, assinaturas e tokens de aceite (LGPD);
+//  - a baixa de estoque precisa ser transacional e auditada em `stock_movements`;
+//  - a página pública `/aceite/:token` consome `GET /api/public/deliveries/:token`,
+//    que devolve apenas os campos necessários — nunca o documento inteiro.
+// ---------------------------------------------------------------------------
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Bloqueio explícito das coleções de negócio.
+    match /materials/{doc}       { allow read, write: if false; }
+    match /employees/{doc}       { allow read, write: if false; }
+    match /deliveries/{doc}      { allow read, write: if false; }
+    match /stock_movements/{doc} { allow read, write: if false; }
+    match /settings/{doc}        { allow read, write: if false; }
+    match /admins/{doc}          { allow read, write: if false; }
+
+    // Rede de segurança para qualquer coleção futura.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

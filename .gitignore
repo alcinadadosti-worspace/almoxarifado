@@ -1,0 +1,18 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+.env.*.local
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# dados locais do driver de desenvolvimento (contêm CPF/assinaturas)
+server/.data/
+server/service-account.json
+*.pem
+.firebase/
+.vscode/
+.idea/
