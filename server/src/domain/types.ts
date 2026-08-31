@@ -219,3 +219,22 @@ export interface AuthenticatedAdmin {
   name: string;
   dev: boolean;
 }
+
+/* ---------------------------------------------------------------- arquivos */
+
+/**
+ * Arquivo sensível (PNG de assinatura, PDF do termo) guardado no banco.
+ *
+ * Usado quando não há Firebase Storage configurado: os arquivos deste sistema
+ * são pequenos (dezenas de KB), então cabem com folga em um documento do
+ * Firestore — e assim o projeto inteiro roda no plano gratuito.
+ */
+export interface StoredFile {
+  id: string;
+  path: string;
+  contentType: string;
+  size: number;
+  /** Conteúdo em base64. */
+  data: string;
+  updatedAt: Iso;
+}

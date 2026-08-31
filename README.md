@@ -42,7 +42,7 @@ Admin monta a entrega  →  link único (Slack ou copiado)  →  colaborador ass
 | --- | --- |
 | Frontend | React 18 + Vite + TypeScript, TailwindCSS, **Three.js / React Three Fiber**, GSAP-class motion com Framer Motion |
 | Backend | Node.js + **Express** + TypeScript, validação com **zod** |
-| Banco | **Firebase** — Firestore (dados), Auth (admin), Storage (assinaturas e PDFs), via **Admin SDK** |
+| Banco | **Firebase** — Firestore (dados **e arquivos**) e Auth (admin), via **Admin SDK**; Cloud Storage é opcional |
 | PDF | **pdf-lib** (geração server-side, sem headless browser) |
 | Notificações | **Slack Bolt** — desacoplado atrás de uma interface `NotificationChannel` |
 
@@ -198,10 +198,21 @@ Cada unidade que entra ou sai deixa registro:
 `reason` ∈ `material_created` · `manual_adjustment` · `delivery_signed` · `delivery_returned`.
 O saldo de uma variante **nunca** é editado direto no formulário: muda só por movimento auditado.
 
-### `settings` e `admins`
+### `settings`, `admins` e `files`
 
 `settings/app` guarda os dados da EMPRESA usados no termo e o limite de estoque baixo.
 `admins/{uid}` guarda o nome exibido no termo e a assinatura salva do representante.
+
+`files/{hash}` guarda os arquivos sensíveis quando não há Cloud Storage configurado:
+
+```jsonc
+{ "path": "terms/ent_…/termo-de-responsabilidade.pdf", "contentType": "application/pdf",
+  "size": 10340, "data": "<base64>", "updatedAt": "…" }
+```
+
+Cabe: um termo assinado ocupa ~15 kB entre PDF e as duas assinaturas, contra o limite de
+1 MiB por documento do Firestore e 1 GiB do plano gratuito. Arquivos acima de 700 kB são
+recusados com uma mensagem pedindo que se configure o Cloud Storage.
 
 ---
 
@@ -233,7 +244,10 @@ O link vira somente leitura depois de assinado e expira sozinho.
 1. **Crie o projeto** em <https://console.firebase.google.com>.
 2. **Firestore** → criar banco (modo produção).
 3. **Authentication** → habilitar *E-mail/senha* e criar os usuários do almoxarifado/RH.
-4. **Storage** → criar bucket (anote o nome, ex.: `seu-projeto.appspot.com`).
+4. **Storage (opcional)** → só se você quiser guardar os arquivos no Cloud Storage. Por
+   padrão eles vão para a coleção `files` do Firestore, o que mantém o projeto no **plano
+   gratuito** — o Cloud Storage exige o plano Blaze. Se criar o bucket, anote o nome exato
+   (ex.: `seu-projeto.firebasestorage.app`) e preencha `FIREBASE_STORAGE_BUCKET`.
 5. **Conta de serviço** → *Configurações do projeto › Contas de serviço › Gerar nova chave privada*.
    Salve como `server/service-account.json` (já está no `.gitignore`).
 6. **Publique as regras** — elas bloqueiam **todo** acesso direto do cliente; a API usa o Admin SDK,
@@ -264,7 +278,9 @@ Copie os exemplos: `cp server/.env.example server/.env` e `cp web/.env.example w
 | `API_BASE_URL` | domínio da API — usado nas URLs assinadas de arquivo |
 | `CORS_ORIGINS` | origens liberadas (separadas por vírgula) |
 | `DATA_DRIVER` | `auto` (padrão), `firestore` ou `local` |
-| `FIREBASE_PROJECT_ID` · `FIREBASE_STORAGE_BUCKET` | projeto e bucket |
+| `FIREBASE_PROJECT_ID` | id do projeto no Firebase |
+| `STORAGE_DRIVER` | `auto` (padrão), `firestore` (arquivos no banco), `firebase` (Cloud Storage) ou `local` |
+| `FIREBASE_STORAGE_BUCKET` | bucket do Cloud Storage — **deixe vazio** para guardar no Firestore |
 | `FIREBASE_SERVICE_ACCOUNT_PATH` | caminho do JSON da conta de serviço |
 | `FIREBASE_SERVICE_ACCOUNT` | alternativa: o JSON inteiro (ou em base64) numa variável — ideal em PaaS |
 | `ADMIN_EMAILS` | allowlist de e-mails do painel (vazio = qualquer conta do Auth) |
@@ -361,9 +377,11 @@ Rotas do painel exigem `Authorization: Bearer <ID token do Firebase>` (ou o toke
   impede uma segunda assinatura). Rota pública com rate limit por IP.
 - **CPF e assinaturas** são tratados como dados sensíveis: listagens usam CPF mascarado
   (`123.***.***-04`), o CPF é validado por dígito verificador e nunca aparece em log.
-- **PDFs e assinaturas** só saem por **URL assinada com expiração** (15 min por padrão) — no
-  Firebase Storage via `getSignedUrl`; sem chave de assinatura, por uma rota interna protegida com
-  HMAC. URL adulterada responde `403`.
+- **PDFs e assinaturas** só saem por **URL assinada com expiração** (15 min por padrão) — pela
+  rota interna protegida com HMAC quando os arquivos estão no Firestore, ou por `getSignedUrl`
+  quando estão no Cloud Storage. URL adulterada responde `403`.
+- Guardados no Firestore, os arquivos herdam as regras do banco: `files` é negado ao cliente
+  como qualquer outra coleção.
 - **Evidências do aceite** (data/hora, IP, user-agent) e um **hash SHA-256** do conteúdo vão
   impressos no rodapé do PDF, dando rastreabilidade ao documento eletrônico.
 - **`ADMIN_EMAILS`** restringe o painel a uma allowlist mesmo dentro do Firebase Auth.
@@ -433,8 +451,10 @@ API_BASE_URL=https://SEU-SERVICO.onrender.com
 CORS_ORIGINS=https://SEU-SERVICO.onrender.com
 
 FIREBASE_PROJECT_ID=seu-projeto
-FIREBASE_STORAGE_BUCKET=seu-projeto.firebasestorage.app
 FIREBASE_SERVICE_ACCOUNT=<JSON da conta de serviço em base64>
+# Sem bucket, os PDFs e assinaturas ficam no Firestore (plano gratuito).
+# Só preencha se tiver criado um bucket no Cloud Storage (exige plano Blaze):
+# FIREBASE_STORAGE_BUCKET=seu-projeto.firebasestorage.app
 
 ADMIN_EMAILS=logisticavdpenedo@cpalcina.com
 FILE_SIGNING_SECRET=<string aleatória longa>
@@ -455,7 +475,7 @@ O Slack entra depois, quando o app existir (`SLACK_BOT_TOKEN`, `SLACK_SIGNING_SE
 `https://SEU-SERVICO.onrender.com/api/health` deve responder:
 
 ```json
-{ "ok": true, "dataDriver": "firestore", "storageDriver": "firebase", "devAuth": false }
+{ "ok": true, "dataDriver": "firestore", "storageDriver": "firestore", "devAuth": false }
 ```
 
 Se `dataDriver` vier `"local"`, a credencial do Firebase não foi lida — o serviço estaria

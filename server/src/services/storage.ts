@@ -2,15 +2,23 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { env } from '../config/env';
+import { collections } from '../data';
 import { safeEqual } from '../utils/ids';
 
 /**
  * Armazenamento de arquivos sensíveis (assinaturas PNG e termos em PDF).
  *
- * Nada é público. O acesso sempre acontece por **URL assinada com expiração**:
- * no Firebase Storage usamos `getSignedUrl`; quando não há chave para assinar
- * (emulador, ADC sem private key ou driver local), a URL aponta para
- * `/api/files/...` com um HMAC de curta duração emitido por este servidor.
+ * Três implementações, mesma interface:
+ *
+ *  - `firestore` (padrão em produção) — grava no próprio banco. Os arquivos
+ *    deste sistema são pequenos (dezenas de KB), cabem com folga no limite de
+ *    1 MiB por documento e dispensam o Firebase Storage, que exige plano pago.
+ *  - `firebase` — Cloud Storage, usado quando há um bucket configurado.
+ *  - `local` — disco, apenas para desenvolvimento sem Firebase.
+ *
+ * Nada é público em nenhuma delas: o acesso acontece sempre por **URL assinada
+ * com expiração** — `getSignedUrl` no Cloud Storage, e a rota `/api/files/...`
+ * protegida por HMAC nas demais.
  */
 
 export interface StoredObject {
@@ -18,13 +26,18 @@ export interface StoredObject {
   contentType: string;
 }
 
+export type StorageDriver = 'firebase' | 'firestore' | 'local';
+
 export interface StorageService {
-  readonly driver: 'firebase' | 'local';
+  readonly driver: StorageDriver;
   save(objectPath: string, buffer: Buffer, contentType: string): Promise<string>;
   read(objectPath: string): Promise<StoredObject | null>;
   exists(objectPath: string): Promise<boolean>;
   signedUrl(objectPath: string, ttlMinutes?: number): Promise<string>;
 }
+
+/** Limite de segurança: o documento do Firestore aceita 1 MiB e o base64 infla ~33%. */
+const MAX_FILE_BYTES = 700 * 1024;
 
 /* ----------------------------------------------------- URL assinada local */
 
@@ -48,6 +61,56 @@ export function verifyLocalUrl(objectPath: string, expires: string, signature: s
     .update(`${objectPath}|${expiresAt}`)
     .digest('hex');
   return safeEqual(expected, signature);
+}
+
+/* ------------------------------------------------- driver: banco de dados */
+
+/**
+ * Guarda o arquivo como documento na coleção `files`. Funciona igual sobre o
+ * Firestore e sobre o driver local, porque conversa com a camada de dados —
+ * o que também torna este caminho testável sem nenhuma credencial.
+ */
+class DatastoreStorage implements StorageService {
+  readonly driver = 'firestore' as const;
+
+  /** ID determinístico e seguro (o caminho tem barras, que o Firestore recusa). */
+  private idFor(objectPath: string): string {
+    return crypto.createHash('sha256').update(objectPath).digest('hex').slice(0, 40);
+  }
+
+  async save(objectPath: string, buffer: Buffer, contentType: string): Promise<string> {
+    if (buffer.length > MAX_FILE_BYTES) {
+      throw new Error(
+        `Arquivo de ${Math.round(buffer.length / 1024)} kB excede o limite de ` +
+          `${Math.round(MAX_FILE_BYTES / 1024)} kB por documento. ` +
+          'Configure FIREBASE_STORAGE_BUCKET para usar o Cloud Storage.',
+      );
+    }
+
+    await collections.files.set({
+      id: this.idFor(objectPath),
+      path: objectPath,
+      contentType,
+      size: buffer.length,
+      data: buffer.toString('base64'),
+      updatedAt: new Date().toISOString(),
+    });
+    return objectPath;
+  }
+
+  async read(objectPath: string): Promise<StoredObject | null> {
+    const doc = await collections.files.get(this.idFor(objectPath));
+    if (!doc) return null;
+    return { buffer: Buffer.from(doc.data, 'base64'), contentType: doc.contentType };
+  }
+
+  async exists(objectPath: string): Promise<boolean> {
+    return Boolean(await collections.files.get(this.idFor(objectPath)));
+  }
+
+  async signedUrl(objectPath: string, ttlMinutes = env.signedUrlTtlMinutes): Promise<string> {
+    return signLocalUrl(objectPath, ttlMinutes);
+  }
 }
 
 /* ------------------------------------------------------------ driver local */
@@ -149,8 +212,24 @@ class FirebaseStorage implements StorageService {
   }
 }
 
+/* ----------------------------------------------------- escolha do driver */
+
+function pickDriver(): StorageDriver {
+  if (env.storageDriver !== 'auto') return env.storageDriver;
+  if (env.dataDriver !== 'firestore') return 'local';
+  // Com Firebase configurado: Cloud Storage só quando existe um bucket;
+  // caso contrário, os arquivos ficam no próprio Firestore.
+  return env.firebase.storageBucket ? 'firebase' : 'firestore';
+}
+
+const driver = pickDriver();
+
 export const storage: StorageService =
-  env.dataDriver === 'firestore' ? new FirebaseStorage() : new LocalStorage();
+  driver === 'firebase'
+    ? new FirebaseStorage()
+    : driver === 'firestore'
+      ? new DatastoreStorage()
+      : new LocalStorage();
 
 /* --------------------------------------------------------------- helpers */
 

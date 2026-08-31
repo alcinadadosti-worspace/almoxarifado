@@ -7,6 +7,7 @@ import type {
   Employee,
   Material,
   StockMovement,
+  StoredFile,
 } from '../domain/types';
 import type { Datastore } from './datastore';
 import { FirestoreDatastore } from './firestore-datastore';
@@ -22,6 +23,7 @@ export const collections = {
   movements: datastore.collection<StockMovement>('stock_movements'),
   settings: datastore.collection<AppSettings>('settings'),
   admins: datastore.collection<AdminProfile>('admins'),
+  files: datastore.collection<StoredFile>('files'),
 };
 
 export const SETTINGS_ID = 'app';

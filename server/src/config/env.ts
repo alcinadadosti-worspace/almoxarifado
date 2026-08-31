@@ -76,11 +76,14 @@ export const env = {
     : ['http://localhost:5173', 'http://127.0.0.1:5173'],
 
   dataDriver,
+  /** auto | firestore (arquivos no banco) | firebase (Cloud Storage) | local */
+  storageDriver: (str('STORAGE_DRIVER', 'auto') as 'auto' | 'firestore' | 'firebase' | 'local'),
   firebase: {
     available: firebaseAvailable,
     projectId,
     serviceAccount,
-    storageBucket: str('FIREBASE_STORAGE_BUCKET', projectId ? `${projectId}.appspot.com` : ''),
+    // Sem bucket explícito o armazenamento cai para o Firestore (plano gratuito).
+    storageBucket: str('FIREBASE_STORAGE_BUCKET'),
     usingEmulator: hasEmulator,
   },
 

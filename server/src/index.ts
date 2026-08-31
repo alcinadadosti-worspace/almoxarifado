@@ -16,7 +16,12 @@ app.listen(env.port, () => {
   console.info(line('API', `http://localhost:${env.port}`));
   console.info(line('Frontend', env.appBaseUrl));
   console.info(line('Banco', datastore.driver === 'firestore' ? 'Firestore' : 'local (.data)'));
-  console.info(line('Arquivos', storage.driver === 'firebase' ? 'Firebase Storage' : 'local (.data/files)'));
+  const arquivos = {
+    firebase: 'Firebase Storage',
+    firestore: 'Firestore (colecao files)',
+    local: 'local (.data/files)',
+  }[storage.driver];
+  console.info(line('Arquivos', arquivos));
   console.info(line('Slack', notifications.available ? 'ativo' : 'não configurado (link manual)'));
   if (env.allowDevAuth && !env.isProduction) {
     console.info(line('Login dev', `${env.devAdmin.email} / ${env.devAdmin.password}`));

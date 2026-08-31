@@ -23,6 +23,8 @@ service cloud.firestore {
     match /stock_movements/{doc} { allow read, write: if false; }
     match /settings/{doc}        { allow read, write: if false; }
     match /admins/{doc}          { allow read, write: if false; }
+    // PNGs de assinatura e PDFs de termo (base64) — dados sensíveis.
+    match /files/{doc}           { allow read, write: if false; }
 
     // Rede de segurança para qualquer coleção futura.
     match /{document=**} {
