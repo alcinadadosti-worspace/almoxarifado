@@ -16,3 +16,6 @@ server/service-account.json
 .firebase/
 .vscode/
 .idea/
+
+# artefatos de build incremental do TypeScript
+*.tsbuildinfo
