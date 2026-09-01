@@ -534,6 +534,7 @@ npm start         # sobe a API — que também serve o build do frontend
 | `npm run seed` | materiais e colaboradores de exemplo (`-- --force` recria) |
 | `npm run typecheck` | TypeScript nos dois pacotes |
 | `npm run trace:monogram` | regenera SVG/geometria do monograma a partir do PNG |
+| `npm run firestore:indexes` | cria no Firestore os índices de `firestore.indexes.json` (exige o papel *Cloud Datastore Index Admin* na conta de serviço) |
 
 ---
 

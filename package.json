@@ -15,7 +15,8 @@
     "start": "npm run start --workspace server",
     "seed": "npm run seed --workspace server",
     "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace web",
-    "trace:monogram": "node tools/trace-monogram.mjs"
+    "trace:monogram": "node tools/trace-monogram.mjs",
+    "firestore:indexes": "node tools/deploy-indexes.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.0.1"
