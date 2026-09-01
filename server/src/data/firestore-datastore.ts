@@ -1,5 +1,6 @@
 import type admin from 'firebase-admin';
 import { getDb } from './firebase';
+import { countRead } from './metrics';
 import {
   stripUndefined,
   type Collection,
@@ -31,16 +32,20 @@ class FirestoreCollection<T extends Doc> implements Collection<T> {
 
   async get(id: string): Promise<T | null> {
     const snapshot = await this.ref.doc(id).get();
+    countRead(this.name, 1);
     return snapshot.exists ? ({ ...snapshot.data(), id: snapshot.id } as T) : null;
   }
 
   async list(options?: QueryOptions): Promise<T[]> {
     const snapshot = await buildQuery(this.ref, options).get();
+    // Consulta sem resultado ainda custa uma leitura mínima.
+    countRead(this.name, Math.max(snapshot.size, 1));
     return snapshot.docs.map((doc) => ({ ...doc.data(), id: doc.id }) as T);
   }
 
   async findOne(options: QueryOptions): Promise<T | null> {
     const snapshot = await buildQuery(this.ref, { ...options, limit: 1 }).get();
+    countRead(this.name, Math.max(snapshot.size, 1));
     const doc = snapshot.docs[0];
     return doc ? ({ ...doc.data(), id: doc.id } as T) : null;
   }
@@ -60,8 +65,13 @@ class FirestoreCollection<T extends Doc> implements Collection<T> {
     await this.ref.doc(id).delete();
   }
 
+  /**
+   * Agregação: o Firestore cobra uma leitura por lote de até 1000 entradas de
+   * índice. Contar 109 colaboradores custa 1 leitura, contra 109 de um `list`.
+   */
   async count(options?: QueryOptions): Promise<number> {
     const snapshot = await buildQuery(this.ref, options).count().get();
+    countRead(this.name, 1);
     return snapshot.data().count;
   }
 }
@@ -89,6 +99,7 @@ export class FirestoreDatastore implements Datastore {
       const tx: Transaction = {
         get: async (collection, id) => {
           const snapshot = await t.get(db.collection(collection.name).doc(id));
+          countRead(collection.name, 1);
           return snapshot.exists ? ({ ...snapshot.data(), id: snapshot.id } as never) : null;
         },
         set: (collection, doc) => {

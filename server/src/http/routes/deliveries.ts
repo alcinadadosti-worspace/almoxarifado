@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { collections, getSettings } from '../../data';
+import { aggregates, collections, getSettings } from '../../data';
 import {
   countersignSchema,
   deliveryInputSchema,
@@ -46,33 +46,41 @@ deliveriesRouter.get(
   asyncRoute(async (req, res) => {
     const status = String(req.query.status ?? '').trim();
     const search = String(req.query.search ?? '').trim();
+    const filtered = STATUSES.includes(status as DeliveryStatus) ? (status as DeliveryStatus) : null;
 
-    let deliveries = await collections.deliveries.list({ orderBy: ['createdAt', 'desc'] });
-    const counts = Object.fromEntries(STATUSES.map((value) => [value, 0])) as Record<
-      DeliveryStatus,
-      number
-    >;
-    for (const delivery of deliveries) counts[delivery.status] = (counts[delivery.status] ?? 0) + 1;
+    // Os contadores das abas vêm de agregações (uma leitura cada) e a lista
+    // já sai filtrada pelo banco. Antes, carregávamos a coleção inteira só
+    // para contar e filtrar em memória — custo que crescia a cada entrega.
+    const [deliveries, ...statusCounts] = await Promise.all([
+      collections.deliveries.list({
+        where: filtered ? [['status', '==', filtered]] : undefined,
+        orderBy: ['createdAt', 'desc'],
+        limit: search ? 200 : 60,
+      }),
+      ...STATUSES.map((value) => aggregates.deliveries.count({ where: [['status', '==', value]] })),
+    ]);
 
-    if (status && STATUSES.includes(status as DeliveryStatus)) {
-      deliveries = deliveries.filter((delivery) => delivery.status === status);
-    }
-    if (search) {
-      deliveries = deliveries.filter((delivery) =>
-        matchesSearch(
-          search,
-          delivery.employeeDraft.fullName,
-          delivery.employeeDraft.sector,
-          delivery.employeeDraft.role,
-          delivery.items.map((item) => item.name).join(' '),
-        ),
-      );
-    }
+    const counts = Object.fromEntries(
+      STATUSES.map((value, index) => [value, statusCounts[index]]),
+    ) as Record<DeliveryStatus, number>;
+    const visible = search
+      ? deliveries.filter((delivery) =>
+          matchesSearch(
+            search,
+            delivery.employeeDraft.fullName,
+            delivery.employeeDraft.sector,
+            delivery.employeeDraft.role,
+            delivery.items.map((item) => item.name).join(' '),
+          ),
+        )
+      : deliveries;
 
     res.json({
-      deliveries: await Promise.all(deliveries.slice(0, 200).map((d) => deliveryDto(d))),
+      deliveries: await Promise.all(visible.slice(0, 60).map((d) => deliveryDto(d))),
       counts,
-      total: deliveries.length,
+      total: filtered
+        ? counts[filtered]
+        : Object.values(counts).reduce((sum, value) => sum + value, 0),
       notifications: notificationStatus(await getSettings()),
     });
   }),

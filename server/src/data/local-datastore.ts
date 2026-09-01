@@ -10,6 +10,7 @@ import {
   type QueryOptions,
   type Transaction,
 } from './datastore';
+import { countRead } from './metrics';
 
 /**
  * Cópia profunda. Leituras devolvem cópias, nunca o objeto do cache: quem
@@ -89,15 +90,19 @@ class LocalCollection<T extends Doc> implements Collection<T> {
 
   async get(id: string): Promise<T | null> {
     const doc = this.load().get(id);
+    countRead(this.name, 1);
     return doc ? clone(doc) : null;
   }
 
   async list(options?: QueryOptions): Promise<T[]> {
-    return applyQuery([...this.load().values()], options).map(clone);
+    const result = applyQuery([...this.load().values()], options);
+    countRead(this.name, Math.max(result.length, 1));
+    return result.map(clone);
   }
 
   async findOne(options: QueryOptions): Promise<T | null> {
     const [first] = applyQuery([...this.load().values()], { ...options, limit: 1 });
+    countRead(this.name, 1);
     return first ? clone(first) : null;
   }
 
@@ -118,6 +123,7 @@ class LocalCollection<T extends Doc> implements Collection<T> {
   }
 
   async count(options?: QueryOptions): Promise<number> {
+    countRead(this.name, 1);
     return applyQuery([...this.load().values()], options).length;
   }
 
@@ -162,15 +168,19 @@ export class LocalDatastore implements Datastore {
     const run = async (): Promise<R> => {
       const touched = new Set<LocalCollection<never>>();
       const snapshots = new Map<LocalCollection<never>, Map<string, never>>();
+
+      // Resolvida pelo nome, nunca pela referência recebida: quem chama pode
+      // estar passando um wrapper (cache), e a transação precisa da coleção
+      // real para tirar o retrato e desfazer em caso de erro.
       const remember = (collection: Collection<Doc>) => {
-        const local = collection as unknown as LocalCollection<never>;
+        const local = this.collection(collection.name) as unknown as LocalCollection<never>;
         if (!snapshots.has(local)) snapshots.set(local, local.snapshot());
         touched.add(local);
         return local;
       };
 
       const tx: Transaction = {
-        get: async (collection, id) => collection.get(id),
+        get: async (collection, id) => this.collection(collection.name).get(id) as never,
         set: (collection, doc) => {
           remember(collection as Collection<Doc>).writeSync(doc as never);
         },

@@ -23,7 +23,7 @@ import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/cn';
 import { formatDateTime, quantityLabel, slackErrorMessage } from '@/lib/format';
 import { useResource } from '@/lib/useResource';
-import type { AdminProfile, DeliveryDto, NotificationStatus } from '@/types/domain';
+import type { DeliveryDto, NotificationStatus } from '@/types/domain';
 
 interface DetailResponse {
   delivery: DeliveryDto;
@@ -96,9 +96,11 @@ function CountersignPanel({
   onDone: (updated: DeliveryDto) => void;
 }) {
   const toast = useToast();
+  // O perfil já está no contexto de autenticação: buscar /api/auth/me de novo
+  // aqui era mais uma leitura do banco por entrega aberta.
   const { admin, refreshProfile } = useAuth();
   const padRef = useRef<SignaturePadHandle>(null);
-  const { data: profile } = useResource<AdminProfile>('/api/auth/me');
+  const profile = admin;
   const [hasInk, setHasInk] = useState(false);
   const [saveForReuse, setSaveForReuse] = useState(false);
   const [saving, setSaving] = useState(false);

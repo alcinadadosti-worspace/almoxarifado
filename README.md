@@ -29,6 +29,7 @@ Admin monta a entrega  →  link único (Slack ou copiado)  →  colaborador ass
 - [Variáveis de ambiente](#variáveis-de-ambiente)
 - [Plugando o bot do Slack](#plugando-o-bot-do-slack)
 - [API](#api)
+- [Consumo do Firestore](#consumo-do-firestore)
 - [Segurança e LGPD](#segurança-e-lgpd)
 - [Design](#design)
 - [Deploy no Render](#deploy-no-render)
@@ -375,6 +376,38 @@ Rotas do painel exigem `Authorization: Bearer <ID token do Firebase>` (ou o toke
 | `GET` | `/api/public/deliveries/:token` | **público** — só o necessário para exibir o termo |
 | `POST` | `/api/public/deliveries/:token/sign` | **público** — assinatura do colaborador |
 | `GET` | `/api/files/*` | arquivo sensível com HMAC e expiração |
+
+---
+
+## Consumo do Firestore
+
+O plano gratuito dá **50 mil leituras por dia**, e no Firestore o custo é por documento
+devolvido: listar 109 colaboradores custa 109 leituras, não uma.
+
+Três decisões seguram esse número:
+
+- **Cache em memória** das coleções pequenas e estáveis — catálogo, pessoas, configurações e
+  perfis de admin. A coleção inteira fica guardada e filtros, buscas e ordenações são
+  respondidos a partir dela. Qualquer escrita invalida o retrato na hora, e transações
+  invalidam tudo ao confirmar; o TTL (5 a 10 min) é apenas rede de segurança. `deliveries` e
+  `stock_movements` ficam de fora de propósito: crescem sem teto.
+- **Agregações em vez de listagens** para números. `count()` custa uma leitura por consulta;
+  exibir "109 colaboradores" custava 109.
+- **Limites em toda listagem** que cresce com o uso.
+
+Medido com 6 materiais e 109 colaboradores:
+
+| Fluxo | Antes | Depois |
+| --- | --- | --- |
+| Abrir o painel | 130 | **15** |
+| Abrir Colaboradores | 110 | **0** (cache) |
+| Abrir Nova entrega | 118 | **0** (cache) |
+| Digitar na busca | 110 | **0** (cache) |
+| Sessão completa | 385 | **43** |
+
+Cerca de **89% menos leituras**. Em 20 sessões por dia: ~860, contra as 50 000 disponíveis.
+`GET /api/health` traz um campo `reads` com o acumulado por coleção e uma projeção diária,
+para acompanhar sem adivinhação.
 
 ---
 

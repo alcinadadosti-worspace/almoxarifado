@@ -4,6 +4,7 @@ import cors from 'cors';
 import express, { type Express, type Request } from 'express';
 import { credentialIssues, env } from './config/env';
 import { datastore, getSettings } from './data';
+import { readMetrics } from './data/metrics';
 import { authRouter } from './http/routes/auth';
 import { dashboardRouter } from './http/routes/dashboard';
 import { deliveriesRouter } from './http/routes/deliveries';
@@ -75,6 +76,7 @@ export function createApp(): Express {
       // vazio quando esta tudo certo; explica a queda para o driver local
       credentialIssues: env.firebase.available ? [] : credentialIssues,
       company: settings?.company.name ?? null,
+      reads: readMetrics(),
     });
   });
 
