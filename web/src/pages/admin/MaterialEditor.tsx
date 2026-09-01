@@ -10,6 +10,7 @@ import { SkeletonCard } from '@/components/ui/Skeleton';
 import { useToast } from '@/components/ui/Toast';
 import { ApiError, api } from '@/lib/api';
 import { cn } from '@/lib/cn';
+import { quantityLabel } from '@/lib/format';
 import type { CustomFieldDef, Material, MaterialVariant, VariantType } from '@/types/domain';
 
 /* -------------------------------------------------------------- presets */
@@ -300,13 +301,18 @@ export default function MaterialEditor() {
                   error={errors.unit}
                   onChange={(event) => patch({ unit: event.target.value })}
                   placeholder="unidade, par, dezena…"
+                  hint="Como este item é contado. Escreva o que quiser — o texto é livre."
                 />
                 <datalist id="unit-suggestions">
                   {UNIT_SUGGESTIONS.map((unit) => (
                     <option key={unit} value={unit} />
                   ))}
                 </datalist>
-                <div className="mt-2 flex flex-wrap gap-1.5">
+
+                {/* Atalhos, não um seletor: sem o rótulo, os chips pareciam
+                    opções obrigatórias de um campo que é de texto livre. */}
+                <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[0.68rem] text-bone-100/30">Atalhos:</span>
                   {UNIT_SUGGESTIONS.slice(0, 4).map((unit) => (
                     <button
                       key={unit}
@@ -323,6 +329,16 @@ export default function MaterialEditor() {
                     </button>
                   ))}
                 </div>
+
+                {/* O efeito da escolha, em vez de só o nome dela. */}
+                {form.unit.trim() ? (
+                  <p className="mt-2.5 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[0.72rem] text-bone-100/45">
+                    Uma entrega de 2 aparece no termo como{' '}
+                    <strong className="font-semibold text-gold-200">
+                      {quantityLabel(2, form.unit)}
+                    </strong>
+                  </p>
+                ) : null}
               </div>
               <div className="sm:col-span-2">
                 <Switch
@@ -339,7 +355,7 @@ export default function MaterialEditor() {
           <Section
             index="02"
             title="Eixo de variação"
-            description="Dê um nome ao eixo (Tamanho, Numeração, Voltagem…) e crie quantas variantes quiser."
+            description="O que diferencia uma peça da outra: tamanho, numeração, voltagem… Você dá o nome e cria quantas variantes precisar, cada uma com seu estoque."
           >
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
@@ -349,12 +365,31 @@ export default function MaterialEditor() {
                   value={form.variantLabel}
                   onChange={(event) => patch({ variantLabel: event.target.value })}
                   placeholder="Tamanho"
+                  hint="O nome do que muda de uma peça para outra."
                 />
                 <datalist id="axis-suggestions">
                   {AXIS_SUGGESTIONS.map((axis) => (
                     <option key={axis} value={axis} />
                   ))}
                 </datalist>
+                <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[0.68rem] text-bone-100/30">Atalhos:</span>
+                  {AXIS_SUGGESTIONS.slice(0, 4).map((axis) => (
+                    <button
+                      key={axis}
+                      type="button"
+                      onClick={() => patch({ variantLabel: axis })}
+                      className={cn(
+                        'rounded-full border px-2.5 py-1 text-[0.68rem] transition-colors',
+                        form.variantLabel === axis
+                          ? 'border-gold-400/50 bg-gold-400/10 text-gold-200'
+                          : 'border-white/[0.09] text-bone-100/40 hover:border-white/20 hover:text-bone-100',
+                      )}
+                    >
+                      {axis}
+                    </button>
+                  ))}
+                </div>
               </div>
               <Select
                 label="Tipo de variação"
