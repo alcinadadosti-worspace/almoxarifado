@@ -2,19 +2,32 @@ import { useEffect, useRef } from 'react';
 import { useHasFinePointer, usePrefersReducedMotion } from '@/lib/device';
 
 /**
- * Cursor dourado que se molda ao conteúdo.
+ * Cursor dourado com três estados, decididos pelo elemento sob o ponteiro:
  *
- * Livre, é um anel pequeno que se alonga na direção do movimento — a
- * deformação por velocidade é o que dá sensação de peso. Sobre um elemento
- * marcado com `data-magnetic`, o anel interpola até o formato exato dele
- * (tamanho e raio de borda) e o "abraça", enquanto o próprio elemento é puxado
- * alguns pixels na direção do ponteiro.
+ *  - **livre**: um ponto pequeno que se alonga na direção do movimento. A
+ *    deformação por velocidade é o que dá peso; um círculo constante pareceria
+ *    só uma bolinha seguindo o mouse.
+ *  - **alvo**: sobre qualquer coisa clicável, o ponto some e um anel interpola
+ *    até o retângulo exato do elemento — tamanho e raio de borda — abraçando-o.
+ *  - **texto**: sobre campos de digitação, vira uma barra vertical fina.
  *
- * Tudo é escrito direto no DOM dentro de um rAF: nenhum re-render do React.
+ * A detecção é automática (links, botões, campos, rótulos…), sem precisar
+ * marcar cada elemento. `data-magnetic` continua valendo, mas só para dizer
+ * *quanto* o elemento é puxado na direção do ponteiro.
  */
 
-const FREE_SIZE = 26;
+const CLICKABLE =
+  'a[href], button, [role="button"], summary, label[for], select, ' +
+  'input[type="checkbox"], input[type="radio"], input[type="submit"], [data-magnetic]';
+
+const TEXT_FIELD =
+  'input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]), ' +
+  'textarea, [contenteditable="true"]';
+
+const DOT = 7;
 const PAD = 14;
+
+type Mode = 'free' | 'target' | 'text';
 
 interface Frame {
   x: number;
@@ -22,6 +35,7 @@ interface Frame {
   w: number;
   h: number;
   r: number;
+  alpha: number;
 }
 
 const lerp = (from: number, to: number, amount: number) => from + (to - from) * amount;
@@ -44,9 +58,11 @@ export function Cursor() {
     const previous = { ...pointer };
     const velocity = { x: 0, y: 0 };
 
-    const current: Frame = { x: pointer.x, y: pointer.y, w: FREE_SIZE, h: FREE_SIZE, r: FREE_SIZE / 2 };
+    const current: Frame = { x: pointer.x, y: pointer.y, w: DOT, h: DOT, r: DOT / 2, alpha: 0 };
     const target: Frame = { ...current };
 
+    let mode: Mode = 'free';
+    let element: HTMLElement | null = null;
     let magnet: HTMLElement | null = null;
     let pressed = false;
     let raf = 0;
@@ -58,39 +74,77 @@ export function Cursor() {
       magnet = null;
     };
 
-    /** Alvo do anel: o retângulo do elemento sob o cursor, ou um círculo livre. */
+    const isDisabled = (node: HTMLElement) =>
+      node.hasAttribute('disabled') || node.getAttribute('aria-disabled') === 'true';
+
+    const resolve = (from: EventTarget | null) => {
+      const node = from as HTMLElement | null;
+      if (!node?.closest) {
+        mode = 'free';
+        element = null;
+        return;
+      }
+      const clickable = node.closest(CLICKABLE) as HTMLElement | null;
+      if (clickable && !isDisabled(clickable)) {
+        mode = 'target';
+        element = clickable;
+        return;
+      }
+      const field = node.closest(TEXT_FIELD) as HTMLElement | null;
+      if (field && !isDisabled(field)) {
+        mode = 'text';
+        element = field;
+        return;
+      }
+      mode = 'free';
+      element = null;
+    };
+
     const measure = () => {
-      if (magnet) {
-        const rect = magnet.getBoundingClientRect();
-        const radius = Number.parseFloat(getComputedStyle(magnet).borderRadius) || 10;
+      if (mode === 'target' && element) {
+        const rect = element.getBoundingClientRect();
+        const radius = Number.parseFloat(getComputedStyle(element).borderRadius) || 10;
         target.x = rect.left + rect.width / 2;
         target.y = rect.top + rect.height / 2;
         target.w = rect.width + PAD;
         target.h = rect.height + PAD;
         target.r = Math.min(radius + PAD / 2, (rect.height + PAD) / 2);
+        target.alpha = 1;
         return;
       }
+
+      if (mode === 'text' && element) {
+        const size = Number.parseFloat(getComputedStyle(element).fontSize) || 16;
+        target.x = pointer.x;
+        target.y = pointer.y;
+        target.w = 2;
+        target.h = size * 1.5;
+        target.r = 1;
+        target.alpha = 0.9;
+        return;
+      }
+
+      // livre: o anel some e sobra o ponto
       target.x = pointer.x;
       target.y = pointer.y;
-      const scale = pressed ? 0.72 : 1;
-      target.w = FREE_SIZE * scale;
-      target.h = FREE_SIZE * scale;
-      target.r = (FREE_SIZE * scale) / 2;
+      target.w = DOT;
+      target.h = DOT;
+      target.r = DOT / 2;
+      target.alpha = 0;
     };
 
     const onMove = (event: PointerEvent) => {
       pointer.x = event.clientX;
       pointer.y = event.clientY;
+      resolve(event.target);
 
-      const found = (event.target as HTMLElement | null)?.closest?.(
-        '[data-magnetic]',
-      ) as HTMLElement | null;
+      const wanted =
+        mode === 'target' ? ((element?.closest('[data-magnetic]') as HTMLElement | null) ?? null) : null;
 
-      if (found !== magnet) {
+      if (wanted !== magnet) {
         releaseMagnet();
-        magnet = found;
+        magnet = wanted;
       }
-
       if (magnet) {
         const rect = magnet.getBoundingClientRect();
         const strength = magnet.dataset.magnetic === 'strong' ? 0.24 : 0.12;
@@ -109,47 +163,47 @@ export function Cursor() {
     };
     const onLeave = () => {
       releaseMagnet();
+      mode = 'free';
+      element = null;
     };
 
     const tick = () => {
       measure();
 
-      // o anel persegue com atraso; o alvo travado no elemento é mais firme
-      const ease = magnet ? 0.24 : 0.18;
+      const ease = mode === 'target' ? 0.26 : 0.2;
       current.x = lerp(current.x, target.x, ease);
       current.y = lerp(current.y, target.y, ease);
-      current.w = lerp(current.w, target.w, 0.22);
-      current.h = lerp(current.h, target.h, 0.22);
-      current.r = lerp(current.r, target.r, 0.22);
+      current.w = lerp(current.w, target.w, 0.24);
+      current.h = lerp(current.h, target.h, 0.24);
+      current.r = lerp(current.r, target.r, 0.24);
+      current.alpha = lerp(current.alpha, target.alpha, 0.2);
 
       velocity.x = lerp(velocity.x, pointer.x - previous.x, 0.25);
       velocity.y = lerp(velocity.y, pointer.y - previous.y, 0.25);
       previous.x = pointer.x;
       previous.y = pointer.y;
 
-      // deformação por velocidade — só quando o cursor está livre
-      let stretch = '';
-      if (!magnet) {
-        const speed = Math.min(Math.hypot(velocity.x, velocity.y), 90);
-        if (speed > 1) {
-          const angle = (Math.atan2(velocity.y, velocity.x) * 180) / Math.PI;
-          const amount = speed / 90;
-          stretch = ` rotate(${angle.toFixed(1)}deg) scale(${(1 + amount * 0.5).toFixed(3)}, ${(1 - amount * 0.32).toFixed(3)})`;
-        }
-      }
-
       const node = ring.current;
       if (node) {
         node.style.width = `${current.w.toFixed(1)}px`;
         node.style.height = `${current.h.toFixed(1)}px`;
         node.style.borderRadius = `${current.r.toFixed(1)}px`;
-        node.style.transform = `translate3d(${current.x.toFixed(1)}px, ${current.y.toFixed(1)}px, 0) translate(-50%, -50%)${stretch}`;
-        node.style.opacity = magnet ? '1' : '0.55';
+        node.style.opacity = current.alpha.toFixed(2);
+        node.style.transform = `translate3d(${current.x.toFixed(1)}px, ${current.y.toFixed(1)}px, 0) translate(-50%, -50%)`;
+        node.style.backgroundColor = mode === 'text' ? 'rgb(201 160 80)' : 'transparent';
       }
 
+      // o ponto lidera; deforma na direção do movimento e recolhe sobre alvos
       const point = dot.current;
       if (point) {
-        point.style.transform = `translate3d(${pointer.x}px, ${pointer.y}px, 0) translate(-50%, -50%) scale(${magnet ? 0 : 1})`;
+        const speed = Math.min(Math.hypot(velocity.x, velocity.y), 80);
+        const amount = speed / 80;
+        const angle = speed > 1 ? (Math.atan2(velocity.y, velocity.x) * 180) / Math.PI : 0;
+        const scale = mode === 'free' ? (pressed ? 0.6 : 1) : 0;
+        point.style.transform =
+          `translate3d(${pointer.x}px, ${pointer.y}px, 0) translate(-50%, -50%) ` +
+          `rotate(${angle.toFixed(1)}deg) ` +
+          `scale(${(scale * (1 + amount * 1.1)).toFixed(3)}, ${(scale * (1 - amount * 0.45)).toFixed(3)})`;
       }
 
       raf = requestAnimationFrame(tick);
@@ -179,14 +233,14 @@ export function Cursor() {
       <div
         ref={ring}
         aria-hidden
-        className="pointer-events-none fixed left-0 top-0 z-[199] border border-gold-300/80 transition-[opacity] duration-300"
-        style={{ width: FREE_SIZE, height: FREE_SIZE, willChange: 'width, height, transform' }}
+        className="pointer-events-none fixed left-0 top-0 z-[199] border border-gold-300/85"
+        style={{ width: DOT, height: DOT, opacity: 0, willChange: 'width, height, transform, opacity' }}
       />
       <div
         ref={dot}
         aria-hidden
-        className="pointer-events-none fixed left-0 top-0 z-[200] h-[3px] w-[3px] rounded-full bg-gold-200 transition-opacity duration-200"
-        style={{ willChange: 'transform' }}
+        className="pointer-events-none fixed left-0 top-0 z-[200] rounded-full bg-gold-200"
+        style={{ width: DOT, height: DOT, willChange: 'transform' }}
       />
     </>
   );
