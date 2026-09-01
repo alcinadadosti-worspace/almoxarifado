@@ -11,6 +11,7 @@ import {
 import { Badge, StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { CopyButton } from '@/components/ui/CopyButton';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { Input, Switch } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -298,7 +299,7 @@ function ReturnModal({
 export default function DeliveryDetail() {
   const { id } = useParams();
   const toast = useToast();
-  const { data, loading, setData, reload } = useResource<DetailResponse>(
+  const { data, loading, error, setData, reload } = useResource<DetailResponse>(
     id ? `/api/deliveries/${id}` : null,
   );
   const [returning, setReturning] = useState(false);
@@ -371,7 +372,23 @@ export default function DeliveryDetail() {
     );
   }
 
-  if (!delivery) return null;
+  if (!delivery) {
+    return (
+      <>
+        <PageHeader
+          eyebrow="Entrega"
+          title="Entrega não encontrada"
+          back={{ to: '/app/entregas', label: 'Entregas' }}
+        />
+        <ErrorState
+          error={error}
+          subject="esta entrega"
+          onRetry={reload}
+          backTo={{ to: '/app/entregas', label: 'Ver todas as entregas' }}
+        />
+      </>
+    );
+  }
 
   const pending = delivery.status === 'draft' || delivery.status === 'sent';
   const signed = Boolean(delivery.employeeSignature);

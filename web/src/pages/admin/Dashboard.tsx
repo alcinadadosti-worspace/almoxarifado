@@ -4,6 +4,7 @@ import { Badge, StatusBadge } from '@/components/ui/Badge';
 import { ButtonLink } from '@/components/ui/Button';
 import { CountUp } from '@/components/ui/CountUp';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Reveal } from '@/components/ui/Reveal';
 import { SkeletonCard, SkeletonRows } from '@/components/ui/Skeleton';
@@ -42,7 +43,7 @@ function StatCard({
 }
 
 export default function Dashboard() {
-  const { data, loading } = useResource<DashboardData>('/api/dashboard');
+  const { data, loading, error, reload } = useResource<DashboardData>('/api/dashboard');
 
   if (loading && !data) {
     return (
@@ -60,7 +61,14 @@ export default function Dashboard() {
     );
   }
 
-  if (!data) return null;
+  if (!data) {
+    return (
+      <>
+        <PageHeader eyebrow="Painel" title="Estoque" />
+        <ErrorState error={error} subject="o painel" onRetry={reload} />
+      </>
+    );
+  }
 
   const { stock, deliveries, employees, movements, notifications } = data;
   const pendingTotal = deliveries.counts.signed_by_employee;
