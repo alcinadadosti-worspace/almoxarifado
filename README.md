@@ -367,6 +367,7 @@ Rotas do painel exigem `Authorization: Bearer <ID token do Firebase>` (ou o toke
 
 | Método | Rota | Descrição |
 | --- | --- | --- |
+| `GET` | `/api/ping` | **público** — keep-alive do monitor externo; não toca no banco |
 | `GET` | `/api/health` | status, driver de dados, Slack |
 | `POST` | `/api/auth/dev-login` | sessão de desenvolvimento (desligável) |
 | `GET`/`PUT` | `/api/auth/me` | perfil do representante + assinatura salva |
@@ -559,8 +560,40 @@ gravando em disco efêmero, que o Render apaga a cada deploy.
 - [ ] `ADMIN_EMAILS` com a equipe autorizada
 - [ ] HTTPS (as evidências de IP dependem de `X-Forwarded-For` — `trust proxy` já está ligado)
 
-> No plano gratuito o serviço hiberna após ~15 min sem acesso e a primeira requisição demora
-> cerca de 1 minuto. Para um link que vai no Slack e é aberto na hora, vale o plano pago.
+### 4. Manter acordado (plano gratuito)
+
+No plano gratuito o serviço hiberna após ~15 min sem acesso, e religar demora perto de um
+minuto — tempo suficiente para o colaborador abrir o link do Slack e encontrar uma tela em
+branco. Um monitor externo batendo de 5 em 5 minutos resolve, porque o relógio da hibernação
+nunca chega aos 15.
+
+A rota existe para isso:
+
+```
+https://SEU-SERVICO.onrender.com/api/ping   →   {"ok":true,"uptime":1843}
+```
+
+Ela é deliberadamente burra: **não faz nenhuma leitura no Firestore** (288 pings por dia não
+podem competir com o teto de 50 mil) e não conta nada sobre a instalação — a URL vai parar num
+serviço de terceiros. Diagnóstico continua em `/api/health`.
+
+**No [UptimeRobot](https://uptimerobot.com):**
+
+1. *Add New Monitor*
+2. **Monitor Type:** `HTTP(s)`
+3. **Friendly Name:** `ACQUA Almoxarifado`
+4. **URL:** `https://SEU-SERVICO.onrender.com/api/ping`
+5. **Monitoring Interval:** `5 minutes` (o mínimo do plano gratuito, e já basta)
+6. *Create Monitor*
+
+Dois pontos que valem saber antes:
+
+- O plano gratuito do Render dá **750 horas de instância por mês** para a conta inteira. Um mês
+  tem ~730 horas, então **um** serviço sempre ligado cabe — um segundo serviço gratuito no mesmo
+  lugar estoura a cota e derruba os dois.
+- Manter acordado não elimina o disco efêmero: o Render continua reciclando a instância em cada
+  deploy. Isso não é problema aqui porque os dados vivem no Firestore, mas seria se
+  `dataDriver` viesse `"local"` — mais um motivo para conferir o passo 3.
 
 ### Rodando localmente em modo produção
 

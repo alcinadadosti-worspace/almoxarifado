@@ -61,6 +61,26 @@ export function createApp(): Express {
   });
 
   /* ------------------------------------------------------------ status */
+
+  /**
+   * Alvo do monitor externo (UptimeRobot) que mantém o Render acordado.
+   *
+   * O plano gratuito do Render derruba a instância após ~15 min sem
+   * requisição, e religar leva perto de um minuto — o colaborador clicaria no
+   * link do Slack e ficaria olhando uma tela em branco. Um ping a cada 5 min
+   * evita isso.
+   *
+   * Por isso esta rota é deliberadamente burra: não toca no banco (o teto é de
+   * 50 mil leituras por dia, e 288 pings diários não podem consumi-lo) e não
+   * conta nada sobre a instalação — a URL vai parar num serviço de terceiros.
+   * Diagnóstico continua em /api/health, que exige olhar o painel.
+   */
+  app.get('/api/ping', (_req, res) => {
+    // Sem cache: um 200 guardado por proxy diria "no ar" com a aplicação fora.
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.json({ ok: true, uptime: Math.round(process.uptime()) });
+  });
+
   app.get('/api/health', async (_req, res) => {
     const settings = await getSettings().catch(() => null);
     res.json({
