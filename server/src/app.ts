@@ -68,7 +68,7 @@ export function createApp(): Express {
       time: new Date().toISOString(),
       dataDriver: datastore.driver,
       storageDriver: storage.driver,
-      notifications: notificationStatus(),
+      notifications: notificationStatus(settings ?? undefined),
       slackRoutes: Boolean(slackRouter),
       devAuth: env.allowDevAuth && !env.isProduction,
       firebaseConfigured: env.firebase.available,

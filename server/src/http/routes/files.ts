@@ -14,7 +14,9 @@ filesRouter.get(
   '/*',
   rateLimit({ windowMs: 60_000, max: 120, key: 'files' }),
   asyncRoute(async (req, res) => {
-    const objectPath = decodeURIComponent(String(req.params[0] ?? ''));
+    // O Express já decodifica os parâmetros de rota; decodificar de novo
+    // quebraria caminhos com "%" literal.
+    const objectPath = String(req.params[0] ?? '');
     const expires = String(req.query.exp ?? '');
     const signature = String(req.query.sig ?? '');
 

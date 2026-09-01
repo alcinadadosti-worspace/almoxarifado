@@ -41,7 +41,9 @@ publicRouter.get(
 
 publicRouter.post(
   '/deliveries/:token/sign',
-  rateLimit({ windowMs: 60_000, max: 10, key: 'sign' }),
+  // Uma loja inteira pode sair pelo mesmo IP; 30/min segura força bruta sem
+  // barrar uma equipe assinando o kit de admissão ao mesmo tempo.
+  rateLimit({ windowMs: 60_000, max: 30, key: 'sign' }),
   asyncRoute(async (req, res) => {
     const delivery = await findByToken(req.params.token);
     const input = acceptSignSchema.parse(req.body);

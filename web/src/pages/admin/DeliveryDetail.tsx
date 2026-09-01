@@ -335,11 +335,18 @@ export default function DeliveryDetail() {
 
   const openPdf = async () => {
     if (!delivery) return;
+    // A aba precisa nascer de forma síncrona, ainda dentro do clique. Depois de
+    // um `await` o navegador já não associa a abertura ao gesto do usuário e a
+    // trata como pop-up — Safari e Chrome bloqueavam o PDF em silêncio.
+    const tab = window.open('', '_blank');
+    if (tab) tab.opener = null;
     setBusy(true);
     try {
       const response = await api.get<{ url: string }>(`/api/deliveries/${delivery.id}/pdf`);
-      window.open(response.url, '_blank', 'noopener');
+      if (tab) tab.location.href = response.url;
+      else window.location.assign(response.url);
     } catch (error) {
+      tab?.close();
       toast.error(error instanceof ApiError ? error.message : 'PDF indisponível.');
     } finally {
       setBusy(false);

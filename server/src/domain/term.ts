@@ -32,15 +32,24 @@ export const TERM_RESPONSIBILITY_TEXT =
   'solicitado ou no desligamento, em bom estado, ressalvado o desgaste natural pelo uso ' +
   'adequado.';
 
-const MONTHS = [
-  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
-  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
-];
+/** Fuso da empresa. O servidor roda em UTC; a data do termo é a de Penedo. */
+export const COMPANY_TIME_ZONE = 'America/Maceio';
 
-/** "Penedo/AL, 31 de agosto de 2026." */
+const longDate = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: COMPANY_TIME_ZONE,
+  day: '2-digit',
+  month: 'long',
+  year: 'numeric',
+});
+
+/**
+ * "Penedo/AL, 31 de agosto de 2026."
+ *
+ * Formatado no fuso da empresa, não no do servidor: uma assinatura às 23h em
+ * Penedo já é o dia seguinte em UTC, e o termo tem que carregar a data local.
+ */
 export function termPlaceAndDate(company: CompanyInfo, date: Date): string {
-  const d = date.getDate().toString().padStart(2, '0');
-  return `${company.city}/${company.state}, ${d} de ${MONTHS[date.getMonth()]} de ${date.getFullYear()}.`;
+  return `${company.city}/${company.state}, ${longDate.format(date)}.`;
 }
 
 /**

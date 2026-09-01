@@ -27,23 +27,40 @@ interface NavigatorWithHints extends Navigator {
  * Heurística de capacidade para decidir entre a cena WebGL completa e o
  * fallback estático: memória, núcleos, economia de dados e suporte a WebGL2.
  */
-export function detectLowEndDevice(): boolean {
-  if (typeof navigator === 'undefined') return true;
-  const nav = navigator as NavigatorWithHints;
+let lowEndVerdict: boolean | null = null;
 
-  if (nav.connection?.saveData) return true;
-  if (typeof nav.deviceMemory === 'number' && nav.deviceMemory > 0 && nav.deviceMemory <= 3) return true;
-  if (typeof nav.hardwareConcurrency === 'number' && nav.hardwareConcurrency <= 3) return true;
+export function detectLowEndDevice(): boolean {
+  // A sondagem cria um contexto WebGL. Sem cache, cada página que montasse a
+  // cena 3D gastaria mais um dos ~16 contextos que o navegador permite — e o
+  // "THREE.WebGLRenderer: Context Lost" aparecia depois de algumas navegações.
+  if (lowEndVerdict !== null) return lowEndVerdict;
+  if (typeof navigator === 'undefined') return true;
+
+  const nav = navigator as NavigatorWithHints;
+  const decide = (verdict: boolean) => {
+    lowEndVerdict = verdict;
+    return verdict;
+  };
+
+  if (nav.connection?.saveData) return decide(true);
+  if (typeof nav.deviceMemory === 'number' && nav.deviceMemory > 0 && nav.deviceMemory <= 3) {
+    return decide(true);
+  }
+  if (typeof nav.hardwareConcurrency === 'number' && nav.hardwareConcurrency <= 3) {
+    return decide(true);
+  }
 
   try {
     const canvas = document.createElement('canvas');
     const gl = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
-    if (!gl) return true;
+    if (!gl) return decide(true);
+    // devolve o contexto de teste ao navegador em vez de deixá-lo vazar
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
   } catch {
-    return true;
+    return decide(true);
   }
 
-  return false;
+  return decide(false);
 }
 
 /** `true` quando vale a pena renderizar a cena 3D. */

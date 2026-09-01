@@ -79,7 +79,9 @@ function safeJson(text: string): unknown {
   try {
     return JSON.parse(text);
   } catch {
-    return { error: text };
+    // Página de erro de proxy ou HTML solto: exibir isso cru só assusta.
+    const looksLikeHtml = /^\s*</.test(text);
+    return { error: looksLikeHtml ? 'Resposta inesperada do servidor.' : text.slice(0, 200) };
   }
 }
 

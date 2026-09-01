@@ -12,12 +12,21 @@ import {
 } from './datastore';
 
 /**
+ * Cópia profunda. Leituras devolvem cópias, nunca o objeto do cache: quem
+ * lê e altera em memória (a baixa de estoque faz isso) não pode mutar o
+ * banco por acidente antes de gravar — nem escapar do rollback.
+ */
+const clone = <T>(value: T): T => structuredClone(value);
+
+/**
  * Driver de desenvolvimento: coleções em arquivos JSON dentro de `server/.data`.
  * Mesma superfície do Firestore, incluindo transações (serializadas por uma
  * fila em memória, com rollback do snapshot em caso de erro).
  */
 class LocalCollection<T extends Doc> implements Collection<T> {
   private cache: Map<string, T> | null = null;
+  /** mtime do arquivo na última leitura — detecta escrita de outro processo. */
+  private loadedAt = -1;
 
   constructor(
     readonly name: string,
@@ -28,8 +37,23 @@ class LocalCollection<T extends Doc> implements Collection<T> {
     return path.join(env.dataDir, `${this.name}.json`);
   }
 
+  private fileMtime(): number {
+    try {
+      return fs.statSync(this.file).mtimeMs;
+    } catch {
+      return -1;
+    }
+  }
+
+  /**
+   * Recarrega do disco quando o arquivo mudou por fora — por exemplo, o
+   * `npm run seed` rodado com o servidor de desenvolvimento aberto. Sem isto
+   * o seed não aparecia e ainda era sobrescrito no próximo flush.
+   */
   private load(): Map<string, T> {
-    if (this.cache) return this.cache;
+    const mtime = this.fileMtime();
+    if (this.cache && mtime === this.loadedAt) return this.cache;
+
     const map = new Map<string, T>();
     try {
       if (fs.existsSync(this.file)) {
@@ -40,12 +64,13 @@ class LocalCollection<T extends Doc> implements Collection<T> {
       console.warn(`[local-datastore] falha ao ler ${this.name}.json`, error);
     }
     this.cache = map;
+    this.loadedAt = mtime;
     return map;
   }
 
-  /** @internal usado pelas transações. */
+  /** @internal usado pelas transações — cópia profunda, para o rollback valer. */
   snapshot(): Map<string, T> {
-    return new Map(this.load());
+    return new Map([...this.load()].map(([id, doc]) => [id, clone(doc)]));
   }
 
   /** @internal usado pelas transações (rollback). */
@@ -56,21 +81,24 @@ class LocalCollection<T extends Doc> implements Collection<T> {
 
   private flush(): void {
     fs.mkdirSync(env.dataDir, { recursive: true });
-    const docs = [...this.load().values()];
+    const docs = [...(this.cache ?? this.load()).values()];
     fs.writeFileSync(this.file, JSON.stringify(docs, null, 2), 'utf8');
+    // a escrita foi nossa: alinhar o mtime evita uma releitura à toa
+    this.loadedAt = this.fileMtime();
   }
 
   async get(id: string): Promise<T | null> {
-    return this.load().get(id) ?? null;
+    const doc = this.load().get(id);
+    return doc ? clone(doc) : null;
   }
 
   async list(options?: QueryOptions): Promise<T[]> {
-    return applyQuery([...this.load().values()], options);
+    return applyQuery([...this.load().values()], options).map(clone);
   }
 
   async findOne(options: QueryOptions): Promise<T | null> {
     const [first] = applyQuery([...this.load().values()], { ...options, limit: 1 });
-    return first ?? null;
+    return first ? clone(first) : null;
   }
 
   async set(doc: T): Promise<T> {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { IconEdit, IconPlus, IconSearch } from '@/components/icons';
 import { Badge } from '@/components/ui/Badge';
@@ -45,6 +45,16 @@ function AdjustStockModal({
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Cada material tem suas variantes: sem zerar aqui, a variante escolhida para
+  // um material ficava presa e era enviada para o próximo, que não a tem.
+  useEffect(() => {
+    setVariantKey(material?.variants[0]?.key ?? '');
+    setAmount('1');
+    setDirection(1);
+    setNote('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reage à troca de material
+  }, [material?.id]);
+
   const variant = material?.variants.find((item) => item.key === (variantKey || material.variants[0]?.key));
 
   const submit = async () => {
@@ -57,11 +67,19 @@ function AdjustStockModal({
     }
     setSaving(true);
     try {
-      await api.post(`/api/materials/${material.id}/adjust`, { variantKey: key, delta, note });
-      toast.success(
-        'Estoque atualizado',
-        `${delta > 0 ? 'Entrada' : 'Saída'} de ${Math.abs(delta)} em ${material.name} (${key}).`,
+      const response = await api.post<{ warnings?: string[] }>(
+        `/api/materials/${material.id}/adjust`,
+        { variantKey: key, delta, note },
       );
+      if (response.warnings?.length) {
+        // saída maior que o saldo: o servidor limitou a zero e explica
+        toast.push({ title: 'Ajuste aplicado com limite', description: response.warnings.join(' '), tone: 'gold' });
+      } else {
+        toast.success(
+          'Estoque atualizado',
+          `${delta > 0 ? 'Entrada' : 'Saída'} de ${Math.abs(delta)} em ${material.name} (${key}).`,
+        );
+      }
       onDone();
       onClose();
       setAmount('1');

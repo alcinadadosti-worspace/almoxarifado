@@ -101,6 +101,14 @@ export function Cursor() {
     };
 
     const measure = () => {
+      // O alvo saiu do DOM (troca de página, modal fechado): sem esta checagem
+      // o retângulo dele vira 0×0 na origem e o anel voa para o canto da tela.
+      if (element && !element.isConnected) {
+        element = null;
+        mode = 'free';
+        releaseMagnet();
+      }
+
       if (mode === 'target' && element) {
         const rect = element.getBoundingClientRect();
         const radius = Number.parseFloat(getComputedStyle(element).borderRadius) || 10;

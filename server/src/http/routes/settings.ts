@@ -11,7 +11,8 @@ settingsRouter.use(requireAdmin);
 settingsRouter.get(
   '/',
   asyncRoute(async (_req, res) => {
-    res.json({ settings: await getSettings(), notifications: notificationStatus() });
+    const settings = await getSettings();
+    res.json({ settings, notifications: notificationStatus(settings) });
   }),
 );
 

@@ -3,7 +3,8 @@
  * Uso: `npm run seed --workspace server` (ou `npm run seed` na raiz).
  *      `npm run seed -- --force` recria os registros de exemplo.
  */
-import { collections, getSettings } from './data';
+import { env } from './config/env';
+import { collections, datastore, getSettings } from './data';
 import type { Employee, Material } from './domain/types';
 import { newId } from './utils/ids';
 
@@ -144,6 +145,22 @@ const employees: Array<Omit<Employee, 'id' | 'createdAt' | 'updatedAt'>> = [
 
 async function run(): Promise<void> {
   const force = process.argv.includes('--force');
+
+  // Estes são dados de DEMONSTRAÇÃO. Bastou uma chave de serviço na pasta para
+  // um `npm run seed` distraído gravá-los no Firestore de produção — então,
+  // fora do driver local, só com pedido explícito.
+  if (datastore.driver === 'firestore' && !process.argv.includes('--production')) {
+    console.error('');
+    console.error('  ✖  Este comando gravaria materiais de EXEMPLO no Firestore real');
+    console.error(`     (projeto ${env.firebase.projectId || 'desconhecido'}).`);
+    console.error('');
+    console.error('     Para o ambiente local:   DATA_DRIVER=local npm run seed');
+    console.error('     Se for intencional:      npm run seed -- --production');
+    console.error('');
+    process.exit(1);
+  }
+  console.info(`[seed] destino: ${datastore.driver === 'firestore' ? 'Firestore' : 'driver local (.data)'}`);
+
   await getSettings();
 
   const existing = await collections.materials.list();

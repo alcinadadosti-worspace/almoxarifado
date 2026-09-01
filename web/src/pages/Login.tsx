@@ -18,9 +18,11 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
 
   /* Em modo de desenvolvimento já sugerimos as credenciais do .env. */
+  // Só na montagem. Se dependesse de `email`, o campo voltaria a se preencher
+  // sozinho toda vez que o usuário o apagasse.
   useEffect(() => {
-    if (mode === 'dev' && !email) setEmail('logisticavdpenedo@cpalcina.com');
-  }, [mode, email]);
+    if (mode === 'dev') setEmail((current) => current || 'logisticavdpenedo@cpalcina.com');
+  }, [mode]);
 
   if (!loading && admin) {
     const from = (location.state as { from?: string } | null)?.from;
@@ -37,8 +39,11 @@ export default function Login() {
       navigate(from && from.startsWith('/app') ? from : '/app', { replace: true });
     } catch (caught) {
       if (caught instanceof ApiError) setError(caught.message);
+      else if (caught instanceof Error && /auth\/(too-many-requests)/.test(caught.message))
+        setError('Muitas tentativas. Aguarde alguns minutos e tente de novo.');
       else if (caught instanceof Error && caught.message.includes('auth/'))
         setError('E-mail ou senha inválidos.');
+      else if (caught instanceof Error && caught.message) setError(caught.message);
       else setError('Não foi possível entrar. Tente novamente.');
     } finally {
       setSubmitting(false);

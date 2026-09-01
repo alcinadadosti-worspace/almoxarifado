@@ -1,5 +1,5 @@
 import { env } from '../config/env';
-import { collections, getSettings } from '../data';
+import { collections, datastore, getSettings } from '../data';
 import type {
   AcceptSignInput,
   CountersignInput,
@@ -21,7 +21,12 @@ import { formatCpf, maskCpf } from '../utils/cpf';
 import { newAcceptToken, newId } from '../utils/ids';
 import { notifier } from './notifications';
 import { buildTermPdf } from './pdf/term-pdf';
-import { deliveryStockIn, deliveryStockOut } from './stock';
+import {
+  applyStockChangesWithin,
+  emitLowStockAlerts,
+  stockInChanges,
+  stockOutChanges,
+} from './stock';
 import { decodeDataUrl, storage, storagePaths } from './storage';
 
 /* -------------------------------------------------------------- helpers */
@@ -31,6 +36,9 @@ export const acceptUrlFor = (delivery: Delivery): string =>
 
 export const reviewUrlFor = (delivery: Delivery): string =>
   `${env.appBaseUrl}/app/entregas/${delivery.id}`;
+
+/** Abaixo disso não é uma assinatura — nem um ponto único sobrevive tão pequeno. */
+const MIN_SIGNATURE_BYTES = 100;
 
 const systemActor = (delivery: Delivery): AuthenticatedAdmin => ({
   uid: `colaborador:${delivery.id}`,
@@ -48,6 +56,9 @@ function assertTransition(delivery: Delivery, allowed: DeliveryStatus[], action:
   }
 }
 
+const isExpired = (delivery: Delivery): boolean =>
+  new Date(delivery.tokenExpiresAt).getTime() < Date.now();
+
 /* ---------------------------------------------------- criação da entrega */
 
 /** Congela os dados do catálogo no momento da entrega (snapshot imutável). */
@@ -62,6 +73,9 @@ async function buildItems(input: DeliveryInput['items']): Promise<DeliveryItem[]
       cache.set(raw.materialId, material);
     }
     if (!material) throw HttpError.badRequest(`Material ${raw.materialId} não encontrado.`);
+    if (!material.active) {
+      throw HttpError.badRequest(`${material.name} está inativo e não pode ser entregue.`);
+    }
 
     const variant = material.variants.find((v) => v.key === raw.variantKey);
     if (!variant) {
@@ -179,6 +193,13 @@ export async function sendDelivery(
   slackTarget?: string,
 ): Promise<SendResult> {
   assertTransition(delivery, ['draft', 'sent'], 'reenviar o link');
+  if (isExpired(delivery)) {
+    throw HttpError.gone(
+      'O link desta entrega expirou. Crie uma nova entrega para gerar um link válido.',
+      'token_expired',
+    );
+  }
+
   const settings = await getSettings();
   const acceptUrl = acceptUrlFor(delivery);
 
@@ -222,19 +243,20 @@ export async function findByToken(token: string): Promise<Delivery> {
 /** Payload da página `/aceite/:token` — o mínimo necessário, nada além. */
 export async function publicView(delivery: Delivery) {
   const settings = await getSettings();
-  const expired = new Date(delivery.tokenExpiresAt).getTime() < Date.now();
   const signed = delivery.status !== 'draft' && delivery.status !== 'sent';
 
   return {
     id: delivery.id,
     status: delivery.status,
     signed,
-    expired: expired && !signed,
+    expired: isExpired(delivery) && !signed,
     expiresAt: delivery.tokenExpiresAt,
     company: settings.company,
     employee: {
       fullName: delivery.employeeSignature?.fullName ?? delivery.employeeDraft.fullName ?? '',
-      cpf: delivery.employeeSignature?.cpf ?? delivery.employeeDraft.cpf ?? '',
+      // O CPF só sai para pré-preencher o formulário. Depois de assinado a
+      // página é apenas um resumo — e o link pode ter sido encaminhado.
+      cpf: signed ? '' : (delivery.employeeDraft.cpf ?? ''),
       role: delivery.employeeDraft.role ?? '',
       sector: delivery.employeeDraft.sector ?? '',
     },
@@ -262,78 +284,124 @@ export interface SignContext {
   userAgent?: string;
 }
 
-/** Assinatura do colaborador: evidências, baixa de estoque, PDF e avisos. */
+/**
+ * Assinatura do colaborador.
+ *
+ * Status, baixa de estoque e trilha de auditoria mudam numa **única
+ * transação**: dois toques no botão, ou dois aparelhos com o mesmo link, não
+ * conseguem assinar duas vezes nem baixar o estoque em dobro — o segundo
+ * encontra a entrega já assinada e recebe 409.
+ */
 export async function signByEmployee(
   delivery: Delivery,
   input: AcceptSignInput,
   context: SignContext,
 ): Promise<Delivery> {
+  // Pré-checagens fora da transação, para mensagens claras e sem custo.
   if (delivery.status !== 'draft' && delivery.status !== 'sent') {
     throw HttpError.conflict('Este termo já foi assinado.', 'already_signed');
   }
-  if (new Date(delivery.tokenExpiresAt).getTime() < Date.now()) {
+  if (isExpired(delivery)) {
     throw HttpError.gone('O link de assinatura expirou. Solicite um novo ao almoxarifado.', 'token_expired');
   }
 
   const { buffer, contentType } = decodeDataUrl(input.signature);
-  if (buffer.length < 256) throw HttpError.badRequest('A assinatura está em branco.');
+  if (buffer.length < MIN_SIGNATURE_BYTES) throw HttpError.badRequest('A assinatura está em branco.');
+
+  // O caminho é determinístico; gravar antes garante que, quando o documento
+  // disser que a imagem existe, ela exista. Se a transação falhar por corrida,
+  // sobra um arquivo órfão inofensivo.
   const signaturePath = storagePaths.employeeSignature(delivery.id);
   await storage.save(signaturePath, buffer, contentType);
 
+  const settings = await getSettings();
   const now = new Date();
-  const updated: Delivery = {
-    ...delivery,
-    status: 'signed_by_employee',
-    employeeDraft: {
-      ...delivery.employeeDraft,
-      fullName: input.fullName,
-      cpf: input.cpf,
-      role: input.role,
-      sector: input.sector,
-    },
-    employeeSignature: {
-      imagePath: signaturePath,
-      signedAt: now.toISOString(),
-      ip: context.ip,
-      userAgent: context.userAgent,
-      fullName: input.fullName,
-      cpf: input.cpf,
-    },
-    updatedAt: now.toISOString(),
-  };
+  const actor = systemActor({ ...delivery, employeeDraft: { ...delivery.employeeDraft, fullName: input.fullName } });
 
-  // baixa automática no estoque + auditoria
-  const stock = await deliveryStockOut(updated, systemActor(updated));
-  if (stock.warnings.length) updated.stockWarnings = stock.warnings;
+  const { signed, stock } = await datastore.runTransaction(async (tx) => {
+    // leituras primeiro: a entrega, depois os materiais (dentro do helper)
+    const fresh = await tx.get(collections.deliveries, delivery.id);
+    if (!fresh) throw HttpError.notFound('Link inválido ou já removido.');
+    if (fresh.status !== 'draft' && fresh.status !== 'sent') {
+      throw HttpError.conflict('Este termo já foi assinado.', 'already_signed');
+    }
+    if (isExpired(fresh)) {
+      throw HttpError.gone('O link de assinatura expirou. Solicite um novo ao almoxarifado.', 'token_expired');
+    }
 
-  // mantém o cadastro do colaborador em dia
-  if (updated.employeeId) {
-    await collections.employees.update(updated.employeeId, {
-      fullName: input.fullName,
-      cpf: input.cpf,
-      role: input.role,
-      sector: input.sector,
+    const stockResult = await applyStockChangesWithin(
+      tx,
+      stockOutChanges(fresh),
+      {
+        reason: 'delivery_signed',
+        actor,
+        deliveryId: fresh.id,
+        note: `Entrega assinada por ${input.fullName}`,
+        clampToZero: true,
+      },
+      settings,
+    );
+
+    const next: Delivery = {
+      ...fresh,
+      status: 'signed_by_employee',
+      employeeDraft: {
+        ...fresh.employeeDraft,
+        fullName: input.fullName,
+        cpf: input.cpf,
+        role: input.role,
+        sector: input.sector,
+      },
+      employeeSignature: {
+        imagePath: signaturePath,
+        signedAt: now.toISOString(),
+        ip: context.ip,
+        userAgent: context.userAgent,
+        fullName: input.fullName,
+        cpf: input.cpf,
+      },
+      stockWarnings: stockResult.warnings.length ? stockResult.warnings : undefined,
       updatedAt: now.toISOString(),
-    } as Partial<Employee>);
+    };
+    tx.set(collections.deliveries, next);
+    return { signed: next, stock: stockResult };
+  });
+
+  emitLowStockAlerts(stock);
+
+  // mantém o cadastro do colaborador em dia (fora da transação: não é crítico)
+  if (signed.employeeId) {
+    await collections.employees
+      .update(signed.employeeId, {
+        fullName: input.fullName,
+        cpf: input.cpf,
+        role: input.role,
+        sector: input.sector,
+        updatedAt: now.toISOString(),
+      } as Partial<Employee>)
+      .catch((error) => console.warn('[entregas] não atualizou o cadastro do colaborador', error));
   }
 
-  await generateTermPdf(updated);
-  await collections.deliveries.set(updated);
+  // O PDF fica fora da transação: se falhar aqui, a rota /pdf regenera sob demanda.
+  await generateTermPdf(signed);
+  await collections.deliveries.update(signed.id, {
+    pdfPath: signed.pdfPath,
+    pdfGeneratedAt: signed.pdfGeneratedAt,
+  });
 
-  const settings = await getSettings();
   void notifier.markDeliverySigned({
-    delivery: updated,
+    delivery: signed,
     signedAt: now,
-    reviewUrl: reviewUrlFor(updated),
+    reviewUrl: reviewUrlFor(signed),
     company: settings.company,
   });
 
   console.info(
-    `[entregas] ${updated.id} assinado por ${input.fullName} (${maskCpf(input.cpf)}) — ` +
-      `${updated.items.length} item(ns).`,
+    `[entregas] ${signed.id} assinado por ${input.fullName} (${maskCpf(input.cpf)}) — ` +
+      `${signed.items.length} item(ns).`,
   );
 
-  return updated;
+  return signed;
 }
 
 /* ------------------------------------------------------ contra-assinatura */
@@ -346,12 +414,11 @@ export async function countersign(
   assertTransition(delivery, ['signed_by_employee', 'countersigned'], 'contra-assinar');
 
   const profile = await collections.admins.get(actor.uid);
-  let signaturePath: string | undefined;
+  const signaturePath = storagePaths.adminSignature(delivery.id);
 
   if (input.signature) {
     const { buffer, contentType } = decodeDataUrl(input.signature);
-    if (buffer.length < 256) throw HttpError.badRequest('A assinatura está em branco.');
-    signaturePath = storagePaths.adminSignature(delivery.id);
+    if (buffer.length < MIN_SIGNATURE_BYTES) throw HttpError.badRequest('A assinatura está em branco.');
     await storage.save(signaturePath, buffer, contentType);
 
     if (input.saveForReuse) {
@@ -369,80 +436,115 @@ export async function countersign(
   } else if (input.useSaved && profile?.savedSignaturePath) {
     const saved = await storage.read(profile.savedSignaturePath);
     if (!saved) throw HttpError.badRequest('Assinatura salva não encontrada. Assine na tela.');
-    signaturePath = storagePaths.adminSignature(delivery.id);
     await storage.save(signaturePath, saved.buffer, saved.contentType);
   } else {
     throw HttpError.badRequest('Envie a assinatura ou use a assinatura salva.');
   }
 
   const now = new Date();
-  const updated: Delivery = {
-    ...delivery,
-    status: 'countersigned',
-    adminSignature: {
-      imagePath: signaturePath,
-      signedAt: now.toISOString(),
-      adminUid: actor.uid,
-      adminName: profile?.displayName || actor.name,
-    },
-    updatedAt: now.toISOString(),
-  };
+  const updated = await datastore.runTransaction(async (tx) => {
+    const fresh = await tx.get(collections.deliveries, delivery.id);
+    if (!fresh) throw HttpError.notFound('Entrega não encontrada.');
+    assertTransition(fresh, ['signed_by_employee', 'countersigned'], 'contra-assinar');
+
+    const next: Delivery = {
+      ...fresh,
+      status: 'countersigned',
+      adminSignature: {
+        imagePath: signaturePath,
+        signedAt: now.toISOString(),
+        adminUid: actor.uid,
+        adminName: profile?.displayName || actor.name,
+      },
+      updatedAt: now.toISOString(),
+    };
+    tx.set(collections.deliveries, next);
+    return next;
+  });
 
   await generateTermPdf(updated);
-  await collections.deliveries.set(updated);
+  await collections.deliveries.update(updated.id, {
+    pdfPath: updated.pdfPath,
+    pdfGeneratedAt: updated.pdfGeneratedAt,
+  });
   return updated;
 }
 
 /* --------------------------------------------------------------- devolução */
 
+/**
+ * Devolução total ou parcial. Validação das quantidades, atualização da
+ * entrega e reentrada no estoque acontecem na mesma transação — dois registros
+ * simultâneos não conseguem devolver mais do que foi entregue.
+ */
 export async function registerReturn(
   delivery: Delivery,
   input: DeliveryReturnInput,
   actor: AuthenticatedAdmin,
 ): Promise<Delivery> {
-  assertTransition(delivery, ['signed_by_employee', 'countersigned', 'archived', 'returned'], 'registrar devolução');
+  const allowed: DeliveryStatus[] = ['signed_by_employee', 'countersigned', 'archived', 'returned'];
+  assertTransition(delivery, allowed, 'registrar devolução');
 
-  const items = delivery.items.map((item) => ({ ...item }));
-  for (const entry of input.items) {
-    const item = items[entry.itemIndex];
-    if (!item) throw HttpError.badRequest(`Item ${entry.itemIndex + 1} não existe nesta entrega.`);
-    const alreadyReturned = item.returnedQuantity ?? 0;
-    if (alreadyReturned + entry.quantity > item.quantity) {
-      throw HttpError.badRequest(
-        `Devolução maior que o entregue em "${item.name}": ` +
-          `entregue ${item.quantity}, já devolvido ${alreadyReturned}.`,
-      );
-    }
-    item.returnedQuantity = alreadyReturned + entry.quantity;
-  }
-
-  await deliveryStockIn(delivery, input.items, actor, input.note);
-
+  const settings = await getSettings();
   const now = new Date().toISOString();
-  const fullyReturned = items.every((item) => (item.returnedQuantity ?? 0) >= item.quantity);
 
-  const updated: Delivery = {
-    ...delivery,
-    items,
-    status: fullyReturned ? 'returned' : delivery.status,
-    returns: [
-      ...(delivery.returns ?? []),
+  const { updated, stock } = await datastore.runTransaction(async (tx) => {
+    const fresh = await tx.get(collections.deliveries, delivery.id);
+    if (!fresh) throw HttpError.notFound('Entrega não encontrada.');
+    assertTransition(fresh, allowed, 'registrar devolução');
+
+    const items = fresh.items.map((item) => ({ ...item }));
+    for (const entry of input.items) {
+      const item = items[entry.itemIndex];
+      if (!item) throw HttpError.badRequest(`Item ${entry.itemIndex + 1} não existe nesta entrega.`);
+      const alreadyReturned = item.returnedQuantity ?? 0;
+      if (alreadyReturned + entry.quantity > item.quantity) {
+        throw HttpError.badRequest(
+          `Devolução maior que o entregue em "${item.name}": ` +
+            `entregue ${item.quantity}, já devolvido ${alreadyReturned}.`,
+        );
+      }
+      item.returnedQuantity = alreadyReturned + entry.quantity;
+    }
+
+    const stockResult = await applyStockChangesWithin(
+      tx,
+      stockInChanges(fresh, input.items),
       {
-        at: now,
-        actorUid: actor.uid,
-        actorName: actor.name,
-        note: input.note,
-        items: input.items.map((entry) => ({
-          itemIndex: entry.itemIndex,
-          quantity: entry.quantity,
-          conservation: entry.conservation,
-        })),
+        reason: 'delivery_returned',
+        actor,
+        deliveryId: fresh.id,
+        note: input.note ?? `Devolução de ${fresh.employeeDraft.fullName}`,
       },
-    ],
-    updatedAt: now,
-  };
+      settings,
+    );
 
-  await collections.deliveries.set(updated);
+    const fullyReturned = items.every((item) => (item.returnedQuantity ?? 0) >= item.quantity);
+    const next: Delivery = {
+      ...fresh,
+      items,
+      status: fullyReturned ? 'returned' : fresh.status,
+      returns: [
+        ...(fresh.returns ?? []),
+        {
+          at: now,
+          actorUid: actor.uid,
+          actorName: actor.name,
+          note: input.note,
+          items: input.items.map((entry) => ({
+            itemIndex: entry.itemIndex,
+            quantity: entry.quantity,
+            conservation: entry.conservation,
+          })),
+        },
+      ],
+      updatedAt: now,
+    };
+    tx.set(collections.deliveries, next);
+    return { updated: next, stock: stockResult };
+  });
+
+  emitLowStockAlerts(stock);
   return updated;
 }
 
@@ -456,7 +558,7 @@ export async function archiveDelivery(delivery: Delivery): Promise<Delivery> {
 
 /* --------------------------------------------------------------------- PDF */
 
-/** (Re)gera o termo em PDF e grava o caminho no documento da entrega. */
+/** (Re)gera o termo em PDF e preenche `pdfPath`/`pdfGeneratedAt` no objeto. */
 export async function generateTermPdf(delivery: Delivery): Promise<string> {
   const settings = await getSettings();
 
@@ -511,9 +613,7 @@ export async function deliveryDto(delivery: Delivery, options: { withUrls?: bool
     notes: delivery.notes,
     acceptUrl: acceptUrlFor(delivery),
     tokenExpiresAt: delivery.tokenExpiresAt,
-    expired:
-      new Date(delivery.tokenExpiresAt).getTime() < Date.now() &&
-      (delivery.status === 'draft' || delivery.status === 'sent'),
+    expired: isExpired(delivery) && (delivery.status === 'draft' || delivery.status === 'sent'),
     slackChannel: delivery.slackChannel,
     slackMessageTs: delivery.slackMessageTs,
     sentAt: delivery.sentAt,

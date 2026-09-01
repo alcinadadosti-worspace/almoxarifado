@@ -53,7 +53,7 @@ dashboardRouter.get(
         total: employees.filter((employee) => employee.active).length,
       },
       movements,
-      notifications: notificationStatus(),
+      notifications: notificationStatus(settings),
       lowStockThreshold: settings.lowStockThreshold,
     });
   }),

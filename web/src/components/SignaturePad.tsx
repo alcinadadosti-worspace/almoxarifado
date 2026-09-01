@@ -34,6 +34,10 @@ const PADDING = 18;
  * A largura do traço responde à velocidade do gesto (rápido = fino), como uma
  * caneta de verdade — é o detalhe que faz a assinatura parecer manuscrita e não
  * um rabisco de mouse. Funciona com dedo, caneta e mouse (Pointer Events).
+ *
+ * Desenho é incremental: cada movimento pinta só o segmento novo. Repintar
+ * tudo a cada evento — como era antes — ficava lento em celulares assim que a
+ * assinatura passava de algumas centenas de pontos.
  */
 export const SignaturePad = forwardRef<SignaturePadHandle, SignaturePadProps>(
   function SignaturePad({ className, label, hint, onChange, height = 220 }, ref) {
@@ -53,6 +57,50 @@ export const SignaturePad = forwardRef<SignaturePadHandle, SignaturePadProps>(
       return gradient;
     };
 
+    /** Um ponto isolado (toque sem arrastar) vira um pingo. */
+    const paintDot = (
+      context: CanvasRenderingContext2D,
+      point: Point,
+      offsetX = 0,
+      offsetY = 0,
+      scale = 1,
+    ) => {
+      context.beginPath();
+      context.fillStyle = context.strokeStyle;
+      context.arc((point.x - offsetX) * scale, (point.y - offsetY) * scale, (point.w / 2) * scale, 0, Math.PI * 2);
+      context.fill();
+    };
+
+    /** Segmento suavizado entre dois pontos consecutivos. */
+    const paintSegment = (
+      context: CanvasRenderingContext2D,
+      previous: Point,
+      point: Point,
+      offsetX = 0,
+      offsetY = 0,
+      scale = 1,
+    ) => {
+      context.beginPath();
+      context.lineWidth = point.w * scale;
+      context.moveTo((previous.x - offsetX) * scale, (previous.y - offsetY) * scale);
+      const midX = (previous.x + point.x) / 2;
+      const midY = (previous.y + point.y) / 2;
+      context.quadraticCurveTo(
+        (previous.x - offsetX) * scale,
+        (previous.y - offsetY) * scale,
+        (midX - offsetX) * scale,
+        (midY - offsetY) * scale,
+      );
+      context.lineTo((point.x - offsetX) * scale, (point.y - offsetY) * scale);
+      context.stroke();
+    };
+
+    const prepare = (context: CanvasRenderingContext2D, width: number) => {
+      context.lineCap = 'round';
+      context.lineJoin = 'round';
+      context.strokeStyle = inkGradient(context, width);
+    };
+
     const paintStrokes = useCallback(
       (
         context: CanvasRenderingContext2D,
@@ -62,57 +110,44 @@ export const SignaturePad = forwardRef<SignaturePadHandle, SignaturePadProps>(
         offsetY = 0,
         scale = 1,
       ) => {
-        context.lineCap = 'round';
-        context.lineJoin = 'round';
-        context.strokeStyle = inkGradient(context, width);
-
+        prepare(context, width);
         for (const stroke of list) {
           if (stroke.length === 1) {
-            const point = stroke[0];
-            context.beginPath();
-            context.fillStyle = context.strokeStyle;
-            context.arc(
-              (point.x - offsetX) * scale,
-              (point.y - offsetY) * scale,
-              (point.w / 2) * scale,
-              0,
-              Math.PI * 2,
-            );
-            context.fill();
+            paintDot(context, stroke[0], offsetX, offsetY, scale);
             continue;
           }
-
           for (let i = 1; i < stroke.length; i++) {
-            const previous = stroke[i - 1];
-            const point = stroke[i];
-            context.beginPath();
-            context.lineWidth = point.w * scale;
-            context.moveTo((previous.x - offsetX) * scale, (previous.y - offsetY) * scale);
-            const midX = (previous.x + point.x) / 2;
-            const midY = (previous.y + point.y) / 2;
-            context.quadraticCurveTo(
-              (previous.x - offsetX) * scale,
-              (previous.y - offsetY) * scale,
-              (midX - offsetX) * scale,
-              (midY - offsetY) * scale,
-            );
-            context.lineTo((point.x - offsetX) * scale, (point.y - offsetY) * scale);
-            context.stroke();
+            paintSegment(context, stroke[i - 1], stroke[i], offsetX, offsetY, scale);
           }
         }
       },
       [],
     );
 
-    const redraw = useCallback(() => {
+    /** Contexto pronto para desenhar em coordenadas CSS. */
+    const liveContext = () => {
       const canvas = canvasRef.current;
       const context = canvas?.getContext('2d');
-      if (!canvas || !context) return;
+      if (!canvas || !context) return null;
       const dpr = window.devicePixelRatio || 1;
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
-      context.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
-      paintStrokes(context, canvas.width / dpr, strokes.current);
+      return { context, width: canvas.width / dpr, height: canvas.height / dpr };
+    };
+
+    /** Repinta tudo — só em redimensionamento, desfazer e limpar. */
+    const redraw = useCallback(() => {
+      const live = liveContext();
+      if (!live) return;
+      live.context.clearRect(0, 0, live.width, live.height);
+      paintStrokes(live.context, live.width, strokes.current);
     }, [paintStrokes]);
+
+    const markContent = () => {
+      if (!hasContent) {
+        setHasContent(true);
+        onChange?.(true);
+      }
+    };
 
     /* --------------------------------------------------- redimensionamento */
 
@@ -167,17 +202,32 @@ export const SignaturePad = forwardRef<SignaturePadHandle, SignaturePadProps>(
       const width = lastWidth.current + (target - lastWidth.current) * 0.35;
       lastWidth.current = width;
 
-      stroke.push({ x, y, w: width });
-      redraw();
+      const point = { x, y, w: width };
+      stroke.push(point);
 
-      if (!hasContent) {
-        setHasContent(true);
-        onChange?.(true);
+      // só o segmento novo
+      const live = liveContext();
+      if (live) {
+        prepare(live.context, live.width);
+        paintSegment(live.context, previous, point);
       }
+      markContent();
     };
 
     const handleUp = () => {
+      const stroke = current.current;
       current.current = null;
+      if (!stroke) return;
+
+      // Toque sem arrastar: vale como um pingo (acento, ponto do "i").
+      if (stroke.length === 1) {
+        const live = liveContext();
+        if (live) {
+          prepare(live.context, live.width);
+          paintDot(live.context, stroke[0]);
+        }
+        markContent();
+      }
     };
 
     /* -------------------------------------------------------------- API */
@@ -299,7 +349,6 @@ export const SignaturePad = forwardRef<SignaturePadHandle, SignaturePadProps>(
             onPointerDown={handleDown}
             onPointerMove={handleMove}
             onPointerUp={handleUp}
-            onPointerLeave={handleUp}
             onPointerCancel={handleUp}
             className="relative h-full w-full touch-none"
             style={{ cursor: 'crosshair' }}

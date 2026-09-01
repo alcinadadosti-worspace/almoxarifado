@@ -1,6 +1,6 @@
 import { Float } from '@react-three/drei';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { Suspense, useMemo, useRef } from 'react';
+import { Suspense, useEffect, useMemo, useRef } from 'react';
 import type * as THREE from 'three';
 import { createMonogramGeometry } from './monogram-geometry';
 import { StudioEnv } from './StudioEnv';
@@ -16,6 +16,7 @@ function Seal() {
   const group = useRef<THREE.Group>(null);
   const start = useRef(0);
   const geometry = useMemo(() => createMonogramGeometry({ depth: 0.06, bevel: 0.006 }), []);
+  useEffect(() => () => geometry.dispose(), [geometry]);
 
   useFrame((state) => {
     if (!start.current) start.current = state.clock.elapsedTime;

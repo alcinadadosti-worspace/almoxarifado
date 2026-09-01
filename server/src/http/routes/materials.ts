@@ -126,6 +126,30 @@ materialsRouter.put(
     };
     await collections.materials.set(material);
 
+    // Variante removida com saldo: o saldo não pode simplesmente evaporar da
+    // auditoria. Registramos a saída para que a soma dos movimentos continue
+    // batendo com o que existe no estoque.
+    const keptKeys = new Set(input.variants.map((variant) => variant.key));
+    const removedWithStock = existing.variants.filter(
+      (variant) => !keptKeys.has(variant.key) && variant.stock > 0,
+    );
+    const now = new Date().toISOString();
+    for (const variant of removedWithStock) {
+      await collections.movements.set({
+        id: newId('mov_'),
+        materialId: material.id,
+        materialName: material.name,
+        variantKey: variant.key,
+        delta: -variant.stock,
+        stockAfter: 0,
+        reason: 'manual_adjustment',
+        note: `Variante "${variant.key}" removida do cadastro (saldo de ${variant.stock} baixado)`,
+        actorUid: admin.uid,
+        actorName: admin.name,
+        at: now,
+      });
+    }
+
     const added = input.variants.filter(
       (variant) => !currentStock.has(variant.key) && variant.stock > 0,
     );
@@ -153,6 +177,12 @@ materialsRouter.post(
     if (!material) throw HttpError.notFound('Material não encontrado.');
 
     const input = stockAdjustmentSchema.parse(req.body);
+    if (!material.variants.some((variant) => variant.key === input.variantKey)) {
+      throw HttpError.badRequest(
+        `A variante "${input.variantKey}" não existe em ${material.name}.`,
+      );
+    }
+
     const result = await applyStockChanges(
       [{ materialId: material.id, variantKey: input.variantKey, delta: input.delta }],
       { reason: 'manual_adjustment', actor: admin, note: input.note, clampToZero: true },

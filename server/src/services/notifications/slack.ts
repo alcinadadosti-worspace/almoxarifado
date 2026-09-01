@@ -1,5 +1,15 @@
 import { WebClient } from '@slack/web-api';
 import { env } from '../../config/env';
+import { getSettings } from '../../data';
+
+/**
+ * Canal do administrativo: o que foi salvo em Configurações vence a variável
+ * de ambiente. Antes o painel deixava editar o canal mas o bot ignorava.
+ */
+async function resolveAdminChannel(): Promise<string> {
+  const settings = await getSettings().catch(() => null);
+  return settings?.slackAdminChannel || env.slack.adminChannel;
+}
 import {
   adminSignedNoticeBlocks,
   deliveryInviteBlocks,
@@ -81,7 +91,7 @@ export class SlackNotificationChannel implements NotificationChannel {
       }
     }
 
-    const adminChannel = env.slack.adminChannel;
+    const adminChannel = await resolveAdminChannel();
     if (adminChannel) {
       try {
         await this.client.chat.postMessage({
@@ -99,7 +109,7 @@ export class SlackNotificationChannel implements NotificationChannel {
   }
 
   async notifyAdmins(text: string, blocks?: unknown[]): Promise<NotificationResult> {
-    const channel = env.slack.adminChannel;
+    const channel = await resolveAdminChannel();
     if (!channel) return { ok: false, reason: 'slack_admin_channel_missing' };
     try {
       const response = await this.client.chat.postMessage({

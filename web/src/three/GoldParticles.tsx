@@ -1,5 +1,5 @@
 import { useFrame } from '@react-three/fiber';
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { createParticleTexture } from './monogram-geometry';
 
@@ -41,6 +41,15 @@ export function GoldParticles({ count = 420, radius = 4.2, speed = 0.055 }: Gold
     geo.setAttribute('size', new THREE.BufferAttribute(scales, 1));
     return { geometry: geo, seeds: data };
   }, [count, radius]);
+
+  // recursos de GPU não são coletados pelo GC: liberar ao desmontar
+  useEffect(
+    () => () => {
+      geometry.dispose();
+      texture.dispose();
+    },
+    [geometry, texture],
+  );
 
   useFrame((state, delta) => {
     const node = points.current;

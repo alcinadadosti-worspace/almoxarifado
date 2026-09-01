@@ -58,20 +58,23 @@ export function MaskReveal({
   delay = 0,
   className,
   once = true,
+  as: Outer = 'div',
 }: {
   children: ReactNode;
   delay?: number;
   className?: string;
   once?: boolean;
+  /** `li` quando o pai é uma lista — um `div` dentro de `ul` é HTML inválido. */
+  as?: 'div' | 'li' | 'article' | 'section';
 }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLElement>(null);
   const inView = useInView(ref, { once, margin: '-10% 0px -6% 0px' });
   const reduced = usePrefersReducedMotion();
 
-  if (reduced) return <div className={className}>{children}</div>;
+  if (reduced) return <Outer className={className}>{children}</Outer>;
 
   return (
-    <div ref={ref} className={cn('overflow-hidden', className)}>
+    <Outer ref={ref as React.RefObject<never>} className={cn('overflow-hidden', className)}>
       <motion.div
         initial={{ clipPath: 'inset(100% 0% 0% 0%)', y: 34, scale: 1.03 }}
         animate={
@@ -87,7 +90,7 @@ export function MaskReveal({
       >
         {children}
       </motion.div>
-    </div>
+    </Outer>
   );
 }
 

@@ -64,6 +64,22 @@ export function errorHandler(
     });
     return;
   }
+
+  // Erros do body-parser (JSON malformado, corpo grande demais) já vêm com o
+  // status certo; sem isto virariam um 500 enganoso.
+  const status = (error as { status?: number; statusCode?: number }).status
+    ?? (error as { statusCode?: number }).statusCode;
+  if (typeof status === 'number' && status >= 400 && status < 500) {
+    res.status(status).json({
+      error:
+        status === 413
+          ? 'O conteúdo enviado é grande demais.'
+          : 'Requisição inválida — o corpo não pôde ser lido.',
+      code: status === 413 ? 'payload_too_large' : 'bad_request',
+    });
+    return;
+  }
+
   console.error('[api] erro não tratado', error);
   res.status(500).json({ error: 'Erro interno do servidor.', code: 'internal_error' });
 }

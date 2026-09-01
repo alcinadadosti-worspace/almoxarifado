@@ -41,12 +41,13 @@ export const notifier: NotificationChannel = env.slack.configured
   ? new SlackNotificationChannel(env.slack.botToken)
   : new NoopNotificationChannel();
 
-export function notificationStatus() {
+/** Estado da integração para o painel. Recebe as configurações quando quem chama já as tem. */
+export function notificationStatus(settings?: { slackAdminChannel?: string }) {
   return {
     channel: notifier.id,
     label: notifier.label,
     available: notifier.available,
-    adminChannelConfigured: Boolean(env.slack.adminChannel),
+    adminChannelConfigured: Boolean(settings?.slackAdminChannel || env.slack.adminChannel),
   };
 }
 

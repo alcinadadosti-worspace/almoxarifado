@@ -23,7 +23,12 @@ export interface Collection<T extends Doc> {
   get(id: string): Promise<T | null>;
   list(options?: QueryOptions): Promise<T[]>;
   findOne(options: QueryOptions): Promise<T | null>;
+  /** Substitui o documento inteiro; campos `undefined` são removidos. */
   set(doc: T): Promise<T>;
+  /**
+   * Mescla o patch no documento. Atenção: campos `undefined` são ignorados,
+   * não apagados — para remover um campo, use `set` com o documento completo.
+   */
   update(id: string, patch: Partial<T>): Promise<void>;
   remove(id: string): Promise<void>;
   count(options?: QueryOptions): Promise<number>;

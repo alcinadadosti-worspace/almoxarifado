@@ -74,7 +74,8 @@ export default function DeliveryNew() {
         ]),
       ),
     );
-  }, [material]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reage à troca de material, não à identidade do objeto
+  }, [material?.id]);
 
   const selectedEmployee = people?.employees.find((employee) => employee.id === employeeId);
 

@@ -304,7 +304,15 @@ export default function Accept() {
   }
 
   if (fatal) return <Centered title={fatal.title} description={fatal.description} tone="danger" />;
-  if (!delivery || !term) return null;
+  if (!delivery || !term) {
+    return (
+      <Centered
+        title="Não foi possível abrir o termo"
+        description="Recarregue a página. Se o problema continuar, peça um novo link ao almoxarifado."
+        tone="danger"
+      />
+    );
+  }
 
   if (delivery.signed) return <SignedScreen delivery={delivery} celebrate={justSigned} />;
 
@@ -403,7 +411,7 @@ export default function Accept() {
 
         <ul className="mt-7 space-y-3">
           {delivery.items.map((item, index) => (
-            <MaskReveal key={item.index} delay={index * 0.14} className="rounded-2xl">
+            <MaskReveal as="li" key={item.index} delay={index * 0.14} className="rounded-2xl">
               <article className="surface-light group relative overflow-hidden p-5 sm:p-6">
                 <span
                   aria-hidden

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { collections } from '../../data';
+import { collections, getSettings } from '../../data';
 import {
   countersignSchema,
   deliveryInputSchema,
@@ -70,7 +70,7 @@ deliveriesRouter.get(
       deliveries: await Promise.all(deliveries.slice(0, 200).map((d) => deliveryDto(d))),
       counts,
       total: deliveries.length,
-      notifications: notificationStatus(),
+      notifications: notificationStatus(await getSettings()),
     });
   }),
 );
@@ -81,7 +81,7 @@ deliveriesRouter.get(
     const delivery = await load(req.params.id);
     res.json({
       delivery: await deliveryDto(delivery, { withUrls: true }),
-      notifications: notificationStatus(),
+      notifications: notificationStatus(await getSettings()),
     });
   }),
 );

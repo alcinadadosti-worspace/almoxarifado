@@ -20,7 +20,8 @@ interface AuthContextValue {
   mode: 'firebase' | 'dev';
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  refreshProfile: () => Promise<void>;
+  /** Recarrega o perfil; `null` quando a sessão não é mais válida. */
+  refreshProfile: () => Promise<AdminProfile | null>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -45,17 +46,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const loadProfile = useCallback(async () => {
+  const loadProfile = useCallback(async (): Promise<AdminProfile | null> => {
     try {
-      setAdmin(await api.get<AdminProfile>('/api/auth/me'));
+      const profile = await api.get<AdminProfile>('/api/auth/me');
+      setAdmin(profile);
+      return profile;
     } catch (error) {
       if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
         setAdmin(null);
         devToken.current = null;
         localStorage.removeItem(DEV_TOKEN_KEY);
-      } else {
-        throw error;
+        // 403 é "conta sem acesso ao painel": quem chamou precisa mostrar isso.
+        // Engolir o erro devolvia o usuário à tela de login sem explicação.
+        if (error.status === 403) throw error;
+        return null;
       }
+      throw error;
     }
   }, []);
 
@@ -71,7 +77,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setLoading(false);
           return;
         }
-        await loadProfile().catch(() => setAdmin(null));
+        try {
+          await loadProfile();
+        } catch (error) {
+          setAdmin(null);
+          // Autenticado no Firebase mas barrado pelo painel: encerra a sessão,
+          // senão cada renovação de token repete o 403 num ciclo silencioso.
+          if (error instanceof ApiError && error.status === 403) {
+            const { signOut: firebaseSignOut } = await import('firebase/auth');
+            await firebaseSignOut(getFirebaseAuth()).catch(() => undefined);
+          }
+        }
         if (active) setLoading(false);
       });
       return () => {
@@ -92,9 +108,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(
     async (email: string, password: string) => {
       if (firebaseEnabled) {
-        const { signInWithEmailAndPassword } = await import('firebase/auth');
+        const { signInWithEmailAndPassword, signOut: firebaseSignOut } = await import('firebase/auth');
         await signInWithEmailAndPassword(getFirebaseAuth(), email, password);
-        await loadProfile();
+        try {
+          const profile = await loadProfile();
+          if (!profile) throw new Error('Não foi possível carregar seu perfil. Tente novamente.');
+        } catch (error) {
+          await firebaseSignOut(getFirebaseAuth()).catch(() => undefined);
+          throw error;
+        }
         return;
       }
       const result = await api.post<{ token: string }>(
@@ -104,7 +126,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       );
       devToken.current = result.token;
       localStorage.setItem(DEV_TOKEN_KEY, result.token);
-      await loadProfile();
+      const profile = await loadProfile();
+      if (!profile) throw new Error('Não foi possível carregar seu perfil. Tente novamente.');
     },
     [loadProfile],
   );

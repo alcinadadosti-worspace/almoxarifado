@@ -252,43 +252,47 @@ function drawItemsTable(layout: TermLayout, delivery: Delivery): void {
   ];
 
   const headerHeight = 22;
-  layout.ensure(headerHeight + 26);
 
-  // cabeçalho
-  layout.page.drawRectangle({
-    x: MARGIN,
-    y: layout.y - headerHeight,
-    width: CONTENT_WIDTH,
-    height: headerHeight,
-    color: GOLD_TINT,
-  });
-  layout.page.drawLine({
-    start: { x: MARGIN, y: layout.y - headerHeight },
-    end: { x: MARGIN + CONTENT_WIDTH, y: layout.y - headerHeight },
-    thickness: 0.6,
-    color: GOLD,
-  });
-
-  let cursorX = MARGIN;
-  for (const column of columns) {
-    const label = ansi(column.title);
-    const textWidth = layout.fonts.sansBold.widthOfTextAtSize(label, 7.5);
-    const offset =
-      column.align === 'center'
-        ? (column.width - textWidth) / 2
-        : column.align === 'right'
-          ? column.width - textWidth - 8
-          : 8;
-    layout.page.drawText(label, {
-      x: cursorX + offset,
-      y: layout.y - 14.5,
-      size: 7.5,
-      font: layout.fonts.sansBold,
-      color: GOLD_DEEP,
+  // cabeçalho — repetido no topo de cada página que a tabela ocupar
+  const drawHeader = () => {
+    layout.page.drawRectangle({
+      x: MARGIN,
+      y: layout.y - headerHeight,
+      width: CONTENT_WIDTH,
+      height: headerHeight,
+      color: GOLD_TINT,
     });
-    cursorX += column.width;
-  }
-  layout.y -= headerHeight;
+    layout.page.drawLine({
+      start: { x: MARGIN, y: layout.y - headerHeight },
+      end: { x: MARGIN + CONTENT_WIDTH, y: layout.y - headerHeight },
+      thickness: 0.6,
+      color: GOLD,
+    });
+
+    let cursorX = MARGIN;
+    for (const column of columns) {
+      const label = ansi(column.title);
+      const textWidth = layout.fonts.sansBold.widthOfTextAtSize(label, 7.5);
+      const offset =
+        column.align === 'center'
+          ? (column.width - textWidth) / 2
+          : column.align === 'right'
+            ? column.width - textWidth - 8
+            : 8;
+      layout.page.drawText(label, {
+        x: cursorX + offset,
+        y: layout.y - 14.5,
+        size: 7.5,
+        font: layout.fonts.sansBold,
+        color: GOLD_DEEP,
+      });
+      cursorX += column.width;
+    }
+    layout.y -= headerHeight;
+  };
+
+  layout.ensure(headerHeight + 26);
+  drawHeader();
 
   // linhas
   delivery.items.forEach((item, index) => {
@@ -313,7 +317,11 @@ function drawItemsTable(layout: TermLayout, delivery: Delivery): void {
     const lineCount = Math.max(...wrapped.map((lines) => lines.length));
     const rowHeight = Math.max(24, lineCount * 12.5 + 11);
 
-    layout.ensure(rowHeight);
+    // Se a linha não couber e uma página nova for aberta, a tabela continua
+    // com o cabeçalho — uma linha solta sem títulos de coluna é ilegível.
+    const pagesBefore = layout.pageCount;
+    layout.ensure(rowHeight + headerHeight);
+    if (layout.pageCount !== pagesBefore) drawHeader();
 
     if (index % 2 === 1) {
       layout.page.drawRectangle({
@@ -380,7 +388,9 @@ async function drawSignatureBlock(
 
   if (input.image) {
     try {
-      const png = await pdf.embedPng(input.image);
+      // O canvas gera PNG, mas o schema aceita JPEG — embutir com o decodificador errado falha.
+      const isJpeg = input.image[0] === 0xff && input.image[1] === 0xd8;
+      const png = isJpeg ? await pdf.embedJpg(input.image) : await pdf.embedPng(input.image);
       const maxWidth = width - 20;
       const maxHeight = 46;
       const scale = Math.min(maxWidth / png.width, maxHeight / png.height, 1);

@@ -11,15 +11,26 @@ const dateTime = (value: Date | string): string =>
     timeZone: 'America/Maceio',
   });
 
+/** Um bloco de texto do Slack aceita 3000 caracteres; listas longas são resumidas. */
+const MAX_LISTED_ITEMS = 12;
+
+function itemLines(delivery: Delivery, format: (item: Delivery['items'][number]) => string): string {
+  const shown = delivery.items.slice(0, MAX_LISTED_ITEMS).map(format);
+  const rest = delivery.items.length - shown.length;
+  if (rest > 0) shown.push(`_…e ${rest} ${rest === 1 ? 'outro item' : 'outros itens'}_`);
+  return shown.join('\n').slice(0, 2900);
+}
+
 /** Card do termo enviado ao colaborador por DM. */
 export function deliveryInviteBlocks(
   delivery: Delivery,
   acceptUrl: string,
   company: CompanyInfo,
 ): unknown[] {
-  const items = delivery.items
-    .map((item) => `• *${itemDescription(item)}* — ${itemQuantityLabel(item)} (${item.conservation})`)
-    .join('\n');
+  const items = itemLines(
+    delivery,
+    (item) => `• *${itemDescription(item)}* — ${itemQuantityLabel(item)} (${item.conservation})`,
+  );
 
   return [
     {
@@ -67,9 +78,10 @@ export function deliverySignedBlocks(
   signedAt: Date,
   company: CompanyInfo,
 ): unknown[] {
-  const items = delivery.items
-    .map((item) => `• *${itemDescription(item)}* — ${itemQuantityLabel(item)}`)
-    .join('\n');
+  const items = itemLines(
+    delivery,
+    (item) => `• *${itemDescription(item)}* — ${itemQuantityLabel(item)}`,
+  );
 
   return [
     {

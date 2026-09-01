@@ -534,7 +534,7 @@ npm start         # sobe a API — que também serve o build do frontend
 | `npm run dev:server` / `npm run dev:web` | cada uma isolada |
 | `npm run build` | build de produção dos dois pacotes |
 | `npm start` | roda a API compilada (servindo o frontend) |
-| `npm run seed` | materiais e colaboradores de exemplo (`-- --force` recria) |
+| `npm run seed` | materiais e colaboradores de exemplo (`-- --force` recria). Com uma chave do Firebase na pasta, **recusa** gravar no Firestore: use `DATA_DRIVER=local npm run seed` para o ambiente local, ou `-- --production` se for intencional |
 | `npm run typecheck` | TypeScript nos dois pacotes |
 | `npm run trace:monogram` | regenera SVG/geometria do monograma a partir do PNG |
 | `npm run firestore:indexes` | cria no Firestore os índices de `firestore.indexes.json` (exige o papel *Cloud Datastore Index Admin* na conta de serviço) |
