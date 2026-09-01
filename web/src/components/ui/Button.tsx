@@ -68,7 +68,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   return (
     <button
       ref={ref}
-      data-magnetic={variant === 'gold' ? 'strong' : 'soft'}
+      // Só o botão principal é puxado pelo cursor; em ações secundárias o
+      // deslocamento vira ruído.
+      data-magnetic={variant === 'gold' ? 'strong' : undefined}
       disabled={disabled || loading}
       className={cn(BASE, VARIANTS[variant], SIZES[size], full && 'w-full', className)}
       {...rest}
@@ -103,9 +105,11 @@ export function ButtonLink({
   const external = /^https?:\/\//.test(to) || to.startsWith('#');
   const classes = cn(BASE, VARIANTS[variant], SIZES[size], full && 'w-full', className);
 
+  const magnetic = variant === 'gold' ? 'strong' : undefined;
+
   if (external) {
     return (
-      <a href={to} className={classes} data-magnetic="soft" {...rest}>
+      <a href={to} className={classes} data-magnetic={magnetic} {...rest}>
         {variant === 'gold' ? <Sheen /> : null}
         <span className="relative z-10 inline-flex items-center gap-2">
           {icon}
@@ -116,7 +120,7 @@ export function ButtonLink({
   }
 
   return (
-    <Link to={to} className={classes} data-magnetic="soft" {...rest}>
+    <Link to={to} className={classes} data-magnetic={magnetic} {...rest}>
       {variant === 'gold' ? <Sheen /> : null}
       <span className="relative z-10 inline-flex items-center gap-2">
         {icon}

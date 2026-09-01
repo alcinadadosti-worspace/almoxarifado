@@ -2,18 +2,18 @@ import { useEffect, useRef } from 'react';
 import { useHasFinePointer, usePrefersReducedMotion } from '@/lib/device';
 
 /**
- * Cursor dourado com três estados, decididos pelo elemento sob o ponteiro:
+ * Cursor dourado das páginas de marca (landing e login).
  *
- *  - **livre**: um ponto pequeno que se alonga na direção do movimento. A
- *    deformação por velocidade é o que dá peso; um círculo constante pareceria
- *    só uma bolinha seguindo o mouse.
- *  - **alvo**: sobre qualquer coisa clicável, o ponto some e um anel interpola
- *    até o retângulo exato do elemento — tamanho e raio de borda — abraçando-o.
- *  - **texto**: sobre campos de digitação, vira uma barra vertical fina.
+ * Três estados, decididos pelo que está sob o ponteiro **a cada quadro** — não
+ * só quando o mouse se move. Rolagem, troca de página e conteúdo que aparece
+ * ou some trocam o elemento debaixo do cursor sem nenhum `pointermove`, e a
+ * versão anterior ficava presa ao alvo antigo até o próximo gesto.
  *
- * A detecção é automática (links, botões, campos, rótulos…), sem precisar
- * marcar cada elemento. `data-magnetic` continua valendo, mas só para dizer
- * *quanto* o elemento é puxado na direção do ponteiro.
+ *  - **livre**: um ponto que se alonga na direção do movimento;
+ *  - **alvo**: sobre algo clicável, um anel interpola até o retângulo exato do
+ *    elemento e o abraça; elementos com `data-magnetic` ainda são puxados na
+ *    direção do ponteiro;
+ *  - **texto**: sobre campos de digitação, uma barra vertical fina.
  */
 
 const CLICKABLE =
@@ -54,9 +54,10 @@ export function Cursor() {
     }
     document.documentElement.setAttribute('data-cursor', 'custom');
 
-    const pointer = { x: innerWidth / 2, y: innerHeight / 2 };
+    const pointer = { x: -100, y: -100 };
     const previous = { ...pointer };
     const velocity = { x: 0, y: 0 };
+    let seen = false;
 
     const current: Frame = { x: pointer.x, y: pointer.y, w: DOT, h: DOT, r: DOT / 2, alpha: 0 };
     const target: Frame = { ...current };
@@ -77,20 +78,21 @@ export function Cursor() {
     const isDisabled = (node: HTMLElement) =>
       node.hasAttribute('disabled') || node.getAttribute('aria-disabled') === 'true';
 
-    const resolve = (from: EventTarget | null) => {
-      const node = from as HTMLElement | null;
-      if (!node?.closest) {
+    /** Decide o modo a partir do elemento realmente sob o ponteiro agora. */
+    const resolve = () => {
+      const under = seen ? (document.elementFromPoint(pointer.x, pointer.y) as HTMLElement | null) : null;
+      if (!under?.closest) {
         mode = 'free';
         element = null;
         return;
       }
-      const clickable = node.closest(CLICKABLE) as HTMLElement | null;
+      const clickable = under.closest(CLICKABLE) as HTMLElement | null;
       if (clickable && !isDisabled(clickable)) {
         mode = 'target';
         element = clickable;
         return;
       }
-      const field = node.closest(TEXT_FIELD) as HTMLElement | null;
+      const field = under.closest(TEXT_FIELD) as HTMLElement | null;
       if (field && !isDisabled(field)) {
         mode = 'text';
         element = field;
@@ -100,15 +102,24 @@ export function Cursor() {
       element = null;
     };
 
-    const measure = () => {
-      // O alvo saiu do DOM (troca de página, modal fechado): sem esta checagem
-      // o retângulo dele vira 0×0 na origem e o anel voa para o canto da tela.
-      if (element && !element.isConnected) {
-        element = null;
-        mode = 'free';
+    /** Puxa o elemento magnético alguns pixels na direção do ponteiro. */
+    const syncMagnet = () => {
+      const wanted =
+        mode === 'target' ? ((element?.closest('[data-magnetic]') as HTMLElement | null) ?? null) : null;
+      if (wanted !== magnet) {
         releaseMagnet();
+        magnet = wanted;
       }
+      if (!magnet) return;
+      const rect = magnet.getBoundingClientRect();
+      const strength = magnet.dataset.magnetic === 'strong' ? 0.22 : 0.1;
+      const dx = (pointer.x - (rect.left + rect.width / 2)) * strength;
+      const dy = (pointer.y - (rect.top + rect.height / 2)) * strength;
+      magnet.style.transition = 'transform .25s cubic-bezier(.16,1,.3,1)';
+      magnet.style.transform = `translate3d(${dx.toFixed(2)}px, ${dy.toFixed(2)}px, 0)`;
+    };
 
+    const measure = () => {
       if (mode === 'target' && element) {
         const rect = element.getBoundingClientRect();
         const radius = Number.parseFloat(getComputedStyle(element).borderRadius) || 10;
@@ -120,7 +131,6 @@ export function Cursor() {
         target.alpha = 1;
         return;
       }
-
       if (mode === 'text' && element) {
         const size = Number.parseFloat(getComputedStyle(element).fontSize) || 16;
         target.x = pointer.x;
@@ -131,8 +141,6 @@ export function Cursor() {
         target.alpha = 0.9;
         return;
       }
-
-      // livre: o anel some e sobra o ponto
       target.x = pointer.x;
       target.y = pointer.y;
       target.w = DOT;
@@ -144,25 +152,15 @@ export function Cursor() {
     const onMove = (event: PointerEvent) => {
       pointer.x = event.clientX;
       pointer.y = event.clientY;
-      resolve(event.target);
-
-      const wanted =
-        mode === 'target' ? ((element?.closest('[data-magnetic]') as HTMLElement | null) ?? null) : null;
-
-      if (wanted !== magnet) {
-        releaseMagnet();
-        magnet = wanted;
-      }
-      if (magnet) {
-        const rect = magnet.getBoundingClientRect();
-        const strength = magnet.dataset.magnetic === 'strong' ? 0.24 : 0.12;
-        const dx = (event.clientX - (rect.left + rect.width / 2)) * strength;
-        const dy = (event.clientY - (rect.top + rect.height / 2)) * strength;
-        magnet.style.transition = 'transform .25s cubic-bezier(.16,1,.3,1)';
-        magnet.style.transform = `translate3d(${dx.toFixed(2)}px, ${dy.toFixed(2)}px, 0)`;
+      if (!seen) {
+        // primeiro contato: nasce onde o mouse está, sem viajar do canto da tela
+        seen = true;
+        current.x = pointer.x;
+        current.y = pointer.y;
+        previous.x = pointer.x;
+        previous.y = pointer.y;
       }
     };
-
     const onDown = () => {
       pressed = true;
     };
@@ -170,12 +168,13 @@ export function Cursor() {
       pressed = false;
     };
     const onLeave = () => {
+      seen = false;
       releaseMagnet();
-      mode = 'free';
-      element = null;
     };
 
     const tick = () => {
+      resolve();
+      syncMagnet();
       measure();
 
       const ease = mode === 'target' ? 0.26 : 0.2;
@@ -196,18 +195,17 @@ export function Cursor() {
         node.style.width = `${current.w.toFixed(1)}px`;
         node.style.height = `${current.h.toFixed(1)}px`;
         node.style.borderRadius = `${current.r.toFixed(1)}px`;
-        node.style.opacity = current.alpha.toFixed(2);
+        node.style.opacity = seen ? current.alpha.toFixed(2) : '0';
         node.style.transform = `translate3d(${current.x.toFixed(1)}px, ${current.y.toFixed(1)}px, 0) translate(-50%, -50%)`;
         node.style.backgroundColor = mode === 'text' ? 'rgb(201 160 80)' : 'transparent';
       }
 
-      // o ponto lidera; deforma na direção do movimento e recolhe sobre alvos
       const point = dot.current;
       if (point) {
         const speed = Math.min(Math.hypot(velocity.x, velocity.y), 80);
         const amount = speed / 80;
         const angle = speed > 1 ? (Math.atan2(velocity.y, velocity.x) * 180) / Math.PI : 0;
-        const scale = mode === 'free' ? (pressed ? 0.6 : 1) : 0;
+        const scale = !seen ? 0 : mode === 'free' ? (pressed ? 0.6 : 1) : 0;
         point.style.transform =
           `translate3d(${pointer.x}px, ${pointer.y}px, 0) translate(-50%, -50%) ` +
           `rotate(${angle.toFixed(1)}deg) ` +

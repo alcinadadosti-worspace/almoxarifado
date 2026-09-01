@@ -179,6 +179,24 @@ async function run(): Promise<void> {
         createdAt: duplicate?.createdAt ?? now(),
         updatedAt: now(),
       });
+      // O saldo inicial também entra na auditoria — assim a tela de
+      // Movimentações não começa vazia com o estoque cheio, o que confunde.
+      for (const variant of seed.variants) {
+        if (variant.stock <= 0) continue;
+        await collections.movements.set({
+          id: newId('mov_'),
+          materialId: id,
+          materialName: seed.name,
+          variantKey: variant.key,
+          delta: variant.stock,
+          stockAfter: variant.stock,
+          reason: 'material_created',
+          note: 'Estoque inicial (dados de exemplo)',
+          actorUid: 'seed',
+          actorName: 'Carga inicial',
+          at: now(),
+        });
+      }
       const total = seed.variants.reduce((sum, variant) => sum + variant.stock, 0);
       console.info(`  ✓ ${seed.name.padEnd(18)} ${seed.variants.length} variantes · ${total} ${seed.unit}(s)`);
     }

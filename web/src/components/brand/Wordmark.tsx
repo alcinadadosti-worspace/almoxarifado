@@ -51,7 +51,7 @@ export function Wordmark({
   );
 
   return to ? (
-    <Link to={to} data-magnetic="soft" aria-label="ACQUA Almoxarifado">
+    <Link to={to} aria-label="ACQUA Almoxarifado">
       {content}
     </Link>
   ) : (

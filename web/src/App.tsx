@@ -65,15 +65,17 @@ function PageShell({ children }: { children: React.ReactNode }) {
   const reduced = usePrefersReducedMotion();
   if (reduced) return <>{children}</>;
 
+  // Sem desfoque: texto passando de borrado a nítido em toda troca de página
+  // parece falha de renderização, não transição. Escala e opacidade bastam.
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 1.012, filter: 'blur(10px)' }}
-      animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-      exit={{ opacity: 0, scale: 0.992, filter: 'blur(8px)' }}
+      initial={{ opacity: 0, scale: 1.01 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.994 }}
       transition={{
-        duration: 0.62,
+        duration: 0.55,
         ease: EASE_OUT,
-        opacity: { duration: 0.42, ease: 'easeOut' },
+        opacity: { duration: 0.36, ease: 'easeOut' },
       }}
       style={{ transformOrigin: '50% 45%' }}
     >
@@ -117,9 +119,14 @@ export function App() {
     window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
   }, [location.pathname]);
 
+  // O cursor customizado é um momento de marca: só nas páginas de entrada.
+  // Dentro do painel e na assinatura o cursor nativo vale mais — campos de
+  // texto, selects, tabelas e o canvas precisam de I-beam, seta e crosshair.
+  const brandPage = location.pathname === '/' || location.pathname === '/login';
+
   return (
     <>
-      <Cursor />
+      {brandPage ? <Cursor /> : null}
       <AnimatePresence mode="wait" initial={false}>
         <RouteProgress key={`progress-${location.pathname}`} routeKey={location.pathname} />
       </AnimatePresence>

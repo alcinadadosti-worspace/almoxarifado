@@ -34,10 +34,13 @@ export function Reveal({
     return <Static className={className}>{children}</Static>;
   }
 
+  // Sem `filter: blur`: em listas, cada linha ficando borrada e depois nítida
+  // parecia texto tremendo. Movimento com mola e opacidade dão a mesma entrada
+  // sem re-rasterizar o texto.
   return (
     <Component
-      initial={{ opacity: 0, y, filter: 'blur(7px)' }}
-      whileInView={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+      initial={{ opacity: 0, y }}
+      whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once, margin: '-12% 0px -8% 0px' }}
       transition={{ ...SPRING, delay, opacity: { duration: 0.5, delay, ease: EASE } }}
       className={className}
@@ -100,8 +103,8 @@ export const staggerContainer: Variants = {
 };
 
 export const staggerItem: Variants = {
-  hidden: { opacity: 0, y: 22, filter: 'blur(6px)' },
-  show: { opacity: 1, y: 0, filter: 'blur(0px)', transition: SPRING },
+  hidden: { opacity: 0, y: 22 },
+  show: { opacity: 1, y: 0, transition: SPRING },
 };
 
 /**

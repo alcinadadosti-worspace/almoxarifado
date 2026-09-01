@@ -237,7 +237,6 @@ export function Switch({
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      data-magnetic="soft"
       className={cn(
         'flex w-full items-center justify-between gap-4 rounded-xl border px-4 py-3 text-left transition-colors',
         surface === 'dark'

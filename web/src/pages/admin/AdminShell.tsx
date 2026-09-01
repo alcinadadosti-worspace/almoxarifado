@@ -37,13 +37,14 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
           to={item.to}
           end={item.end}
           onClick={onNavigate}
-          data-magnetic="soft"
           className={({ isActive }) =>
             cn(
-              'group relative flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[0.84rem] font-medium transition-all duration-300',
+              // Com o cursor nativo no painel, o hover precisa se sustentar sozinho:
+              // fundo perceptível, texto claro e o ícone ganhando o dourado.
+              'group relative flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[0.84rem] font-medium transition-colors duration-200',
               isActive
-                ? 'bg-white/[0.06] text-bone-50'
-                : 'text-bone-100/45 hover:bg-white/[0.03] hover:text-bone-100/85',
+                ? 'bg-white/[0.07] text-bone-50'
+                : 'text-bone-100/50 hover:bg-white/[0.05] hover:text-bone-50',
             )
           }
         >
@@ -190,10 +191,10 @@ export default function AdminShell() {
         <AnimatePresence mode="wait" initial={false}>
           <motion.main
             key={location.pathname}
-            initial={{ opacity: 0, y: 14, filter: 'blur(6px)' }}
-            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-            exit={{ opacity: 0, y: -8, filter: 'blur(4px)' }}
-            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
             className="mx-auto max-w-[1440px] px-5 py-8 sm:px-8 sm:py-10"
           >
             <Outlet />
