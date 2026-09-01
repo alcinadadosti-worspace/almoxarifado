@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import cors from 'cors';
-import express, { type Express } from 'express';
+import express, { type Express, type Request } from 'express';
 import { env } from './config/env';
 import { datastore, getSettings } from './data';
 import { authRouter } from './http/routes/auth';
@@ -23,17 +23,23 @@ export function createApp(): Express {
   app.disable('x-powered-by');
   app.set('trust proxy', true);
 
+  // CORS vale só para a API. Arquivos estáticos ficam de fora de propósito:
+  // o `<script type="module" crossorigin>` que o Vite gera manda o header
+  // `Origin` até em requisições ao próprio site, e uma origem não reconhecida
+  // aqui derrubaria o carregamento do frontend inteiro.
   app.use(
-    cors({
-      origin(origin, callback) {
-        // Requisições sem Origin (curl, Slack, mesma origem) passam.
-        if (!origin || env.corsOrigins.includes(origin) || !env.isProduction) {
-          callback(null, true);
-          return;
-        }
-        callback(new Error('Origem não permitida pelo CORS.'));
-      },
-      credentials: false,
+    '/api',
+    cors((incoming, callback) => {
+      // O tipo do pacote `cors` é mínimo; aqui é sempre uma request do Express.
+      const req = incoming as Request;
+      const origin = req.headers.origin;
+      const sameOrigin = origin === `${req.protocol}://${req.get('host')}`;
+      const allowed =
+        !origin || !env.isProduction || sameOrigin || env.corsOrigins.includes(origin);
+
+      // Origem desconhecida: apenas omitimos os cabeçalhos e deixamos o
+      // navegador barrar. Responder com erro viraria um 500 enganoso.
+      callback(null, { origin: allowed, credentials: false });
     }),
   );
 
