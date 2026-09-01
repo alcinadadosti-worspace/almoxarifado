@@ -55,24 +55,35 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
 /* ---------------------------------------------------- transição de página */
 
+const EASE_OUT = [0.22, 1, 0.36, 1] as const;
+
+/**
+ * Troca de página: o conteúdo antigo recua e desfoca enquanto o novo avança.
+ * Sem cortina cobrindo a tela — a atenção fica no conteúdo, não no efeito.
+ */
 function PageShell({ children }: { children: React.ReactNode }) {
   const reduced = usePrefersReducedMotion();
   if (reduced) return <>{children}</>;
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16, filter: 'blur(8px)' }}
-      animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-      exit={{ opacity: 0, y: -10, filter: 'blur(6px)' }}
-      transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
+      initial={{ opacity: 0, scale: 1.012, filter: 'blur(10px)' }}
+      animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+      exit={{ opacity: 0, scale: 0.992, filter: 'blur(8px)' }}
+      transition={{
+        duration: 0.62,
+        ease: EASE_OUT,
+        opacity: { duration: 0.42, ease: 'easeOut' },
+      }}
+      style={{ transformOrigin: '50% 45%' }}
     >
       {children}
     </motion.div>
   );
 }
 
-/** Cortina dourada que atravessa a tela a cada navegação. */
-function RouteCurtain({ routeKey }: { routeKey: string }) {
+/** Fio dourado que percorre o topo durante a navegação — discreto e curto. */
+function RouteProgress({ routeKey }: { routeKey: string }) {
   const reduced = usePrefersReducedMotion();
   if (reduced) return null;
 
@@ -80,10 +91,10 @@ function RouteCurtain({ routeKey }: { routeKey: string }) {
     <motion.div
       key={routeKey}
       aria-hidden
-      className="pointer-events-none fixed inset-0 z-[150] origin-left bg-gold-gradient"
-      initial={{ scaleX: 0, opacity: 0.9 }}
-      animate={{ scaleX: [0, 1, 1], opacity: [0.9, 0.9, 0], transformOrigin: ['0% 50%', '0% 50%', '100% 50%'] }}
-      transition={{ duration: 0.85, times: [0, 0.45, 1], ease: [0.16, 1, 0.3, 1] }}
+      className="pointer-events-none fixed inset-x-0 top-0 z-[150] h-[2px] origin-left bg-gold-gradient"
+      initial={{ scaleX: 0, opacity: 1 }}
+      animate={{ scaleX: [0, 0.7, 1], opacity: [1, 1, 0] }}
+      transition={{ duration: 0.8, times: [0, 0.35, 1], ease: EASE_OUT }}
     />
   );
 }
@@ -110,7 +121,7 @@ export function App() {
     <>
       <Cursor />
       <AnimatePresence mode="wait" initial={false}>
-        <RouteCurtain key={`curtain-${location.pathname}`} routeKey={location.pathname} />
+        <RouteProgress key={`progress-${location.pathname}`} routeKey={location.pathname} />
       </AnimatePresence>
 
       <Suspense fallback={<BrandLoader />}>

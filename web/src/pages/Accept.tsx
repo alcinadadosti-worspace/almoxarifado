@@ -7,7 +7,7 @@ import { SignaturePad, type SignaturePadHandle } from '@/components/SignaturePad
 import { IconCheck } from '@/components/icons';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Field';
-import { Reveal } from '@/components/ui/Reveal';
+import { MaskReveal, Reveal } from '@/components/ui/Reveal';
 import { ApiError, api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { useCanRender3D } from '@/lib/device';
@@ -403,7 +403,7 @@ export default function Accept() {
 
         <ul className="mt-7 space-y-3">
           {delivery.items.map((item, index) => (
-            <Reveal as="li" key={item.index} delay={index * 0.12} y={30}>
+            <MaskReveal key={item.index} delay={index * 0.14} className="rounded-2xl">
               <article className="surface-light group relative overflow-hidden p-5 sm:p-6">
                 <span
                   aria-hidden
@@ -442,7 +442,7 @@ export default function Accept() {
                   </div>
                 </div>
               </article>
-            </Reveal>
+            </MaskReveal>
           ))}
         </ul>
       </section>
