@@ -23,8 +23,13 @@ export const signatureDataUrlSchema = z
 
 /* ------------------------------------------------------------- materiais */
 
+/**
+ * `key` vazia significa "material sem variação" — um crachá, um kit, algo que
+ * só tem quantidade. Antes era preciso inventar uma variante ("Padrão") só
+ * para ter onde guardar o estoque.
+ */
 export const variantSchema = z.object({
-  key: requiredText(60, 'A chave da variante'),
+  key: trimmed(60).default(''),
   stock: z.coerce.number().int().min(0).max(1_000_000),
   minStock: z.coerce.number().int().min(0).max(1_000_000).optional(),
   sku: trimmed(60).optional(),
@@ -62,6 +67,15 @@ export const materialInputSchema = z
         message: 'Existem variantes com a mesma chave.',
       });
     }
+    // Sem variação: uma única linha sem chave. Com variação: toda linha precisa
+    // de um nome, senão duas viram "a mesma coisa" no termo e no estoque.
+    if (value.variants.length > 1 && value.variants.some((v) => !v.key)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['variants'],
+        message: 'Dê um nome a cada variante (PP, 40, Azul…).',
+      });
+    }
     value.customFields.forEach((field, index) => {
       if (field.type === 'select' && (!field.options || field.options.length === 0)) {
         ctx.addIssue({
@@ -76,7 +90,8 @@ export const materialInputSchema = z
 export const materialUpdateSchema = materialInputSchema;
 
 export const stockAdjustmentSchema = z.object({
-  variantKey: requiredText(60, 'A variante'),
+  /** Vazia para material sem variação. */
+  variantKey: trimmed(60).default(''),
   delta: z.coerce.number().int().refine((v) => v !== 0, { message: 'Informe uma quantidade.' }),
   note: trimmed(240).optional(),
 });
@@ -110,7 +125,8 @@ export const employeeInputSchema = z.object({
 
 export const deliveryItemInputSchema = z.object({
   materialId: requiredText(60, 'O material'),
-  variantKey: requiredText(60, 'A variante'),
+  /** Vazia para material sem variação. */
+  variantKey: trimmed(60).default(''),
   quantity: z.coerce.number().int().min(1).max(100_000),
   /** Sobrescritas opcionais — por padrão vem tudo do cadastro do material. */
   brand: trimmed(80).optional(),

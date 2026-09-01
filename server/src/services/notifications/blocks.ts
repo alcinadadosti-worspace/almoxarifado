@@ -1,4 +1,4 @@
-import { itemDescription, itemQuantityLabel } from '../../domain/term';
+import { itemDescription, itemQuantityLabel, variantDescription } from '../../domain/term';
 import type { CompanyInfo, Delivery } from '../../domain/types';
 
 const dateTime = (value: Date | string): string =>
@@ -147,7 +147,7 @@ export function lowStockBlocks(
       text: {
         type: 'mrkdwn',
         text:
-          `:warning: *Estoque baixo* — ${materialName} (${variantLabel} ${variantKey}) ` +
+          `:warning: *Estoque baixo* — ${variantDescription(materialName, variantLabel, variantKey)} ` +
           `está com *${stock}* em estoque (mínimo ${threshold}).`,
       },
     },

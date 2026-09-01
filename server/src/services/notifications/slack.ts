@@ -1,15 +1,7 @@
 import { WebClient } from '@slack/web-api';
 import { env } from '../../config/env';
 import { getSettings } from '../../data';
-
-/**
- * Canal do administrativo: o que foi salvo em Configurações vence a variável
- * de ambiente. Antes o painel deixava editar o canal mas o bot ignorava.
- */
-async function resolveAdminChannel(): Promise<string> {
-  const settings = await getSettings().catch(() => null);
-  return settings?.slackAdminChannel || env.slack.adminChannel;
-}
+import { variantDescription } from '../../domain/term';
 import {
   adminSignedNoticeBlocks,
   deliveryInviteBlocks,
@@ -23,6 +15,15 @@ import type {
   NotificationChannel,
   NotificationResult,
 } from './types';
+
+/**
+ * Canal do administrativo: o que foi salvo em Configurações vence a variável
+ * de ambiente. Antes o painel deixava editar o canal mas o bot ignorava.
+ */
+async function resolveAdminChannel(): Promise<string> {
+  const settings = await getSettings().catch(() => null);
+  return settings?.slackAdminChannel || env.slack.adminChannel;
+}
 
 /**
  * Canal Slack. Só é instanciado quando `SLACK_BOT_TOKEN` e
@@ -127,7 +128,7 @@ export class SlackNotificationChannel implements NotificationChannel {
 
   async notifyLowStock(payload: LowStockPayload): Promise<NotificationResult> {
     return this.notifyAdmins(
-      `Estoque baixo: ${payload.materialName} (${payload.variantLabel} ${payload.variantKey})`,
+      `Estoque baixo: ${variantDescription(payload.materialName, payload.variantLabel, payload.variantKey)}`,
       lowStockBlocks(
         payload.materialName,
         payload.variantLabel,

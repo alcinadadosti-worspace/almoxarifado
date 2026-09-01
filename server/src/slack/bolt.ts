@@ -20,10 +20,13 @@ let receiver: ExpressReceiver | null = null;
 let boltApp: App | null = null;
 
 const stockLine = (material: Material): string => {
-  const variants = material.variants
-    .map((variant) => `${variant.key}: *${variant.stock}*`)
-    .join('  ·  ');
-  return `• *${material.name}* (${material.variantLabel}) — ${variants || 'sem variantes'} · ${material.unit}`;
+  // Material sem variação tem uma linha só, sem nome: mostra apenas o saldo.
+  const varies = !(material.variants.length === 1 && !material.variants[0].key);
+  const variants = varies
+    ? material.variants.map((variant) => `${variant.key}: *${variant.stock}*`).join('  ·  ')
+    : `*${material.variants[0]?.stock ?? 0}*`;
+  const axis = varies ? ` (${material.variantLabel})` : '';
+  return `• *${material.name}*${axis} — ${variants || 'sem variantes'} · ${material.unit}`;
 };
 
 async function searchMaterials(term: string): Promise<Material[]> {

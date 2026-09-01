@@ -1,5 +1,6 @@
 import { collections, datastore, getSettings } from '../data';
 import type { Transaction } from '../data/datastore';
+import { variantDescription } from '../domain/term';
 import type {
   AppSettings,
   AuthenticatedAdmin,
@@ -100,7 +101,7 @@ export async function applyStockChangesWithin(
     let delta = change.delta;
     if (options.clampToZero && delta < 0 && variant.stock + delta < 0) {
       warnings.push(
-        `${material.name} (${material.variantLabel} ${variant.key}): saldo insuficiente — ` +
+        `${variantDescription(material.name, material.variantLabel, variant.key)}: saldo insuficiente — ` +
           `baixa de ${Math.abs(delta)} ajustada para ${variant.stock}.`,
       );
       delta = -variant.stock;

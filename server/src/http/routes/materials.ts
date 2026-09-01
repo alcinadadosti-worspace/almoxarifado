@@ -176,8 +176,12 @@ materialsRouter.post(
 
     const input = stockAdjustmentSchema.parse(req.body);
     if (!material.variants.some((variant) => variant.key === input.variantKey)) {
+      // Chave vazia num material que varia é o caso comum: o painel mandou o
+      // ajuste sem escolher a variante.
       throw HttpError.badRequest(
-        `A variante "${input.variantKey}" não existe em ${material.name}.`,
+        input.variantKey
+          ? `A variante "${input.variantKey}" não existe em ${material.name}.`
+          : `Escolha ${(material.variantLabel || 'a variante').toLowerCase()} de ${material.name}.`,
       );
     }
 

@@ -85,6 +85,27 @@ export function pluralizeUnit(unit: string, quantity: number): string {
 export const quantityLabel = (quantity: number, unit: string): string =>
   `${quantity} ${pluralizeUnit(unit, quantity)}`;
 
+/**
+ * Material sem variação: uma única linha de estoque, sem nome. Um crachá não
+ * tem tamanho, e pedir "escolha a variante" ali só atrapalha.
+ */
+export const materialVaries = (item?: { variants: Array<{ key: string }> } | null): boolean =>
+  !(item && item.variants.length === 1 && !item.variants[0].key);
+
+/**
+ * "Camisa — Tamanho G", ou apenas "Crachá" quando o material não varia.
+ * Espelha `itemDescription` do servidor: a tela precisa mostrar exatamente o
+ * que vai sair impresso no termo.
+ */
+export function variantLabelOf(
+  name: string | undefined,
+  variantLabel: string | undefined,
+  variantKey: string | undefined,
+): string {
+  const base = name ?? '—';
+  return variantKey ? `${base} — ${variantLabel || 'Variante'} ${variantKey}` : base;
+}
+
 /* ------------------------------------------------------------- entregas */
 
 export const STATUS_LABEL: Record<DeliveryStatus, string> = {

@@ -14,7 +14,7 @@ import { TiltCard } from '@/components/ui/TiltCard';
 import { useToast } from '@/components/ui/Toast';
 import { ApiError, api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { pluralizeUnit } from '@/lib/format';
+import { materialVaries, pluralizeUnit, variantLabelOf } from '@/lib/format';
 import { useDebounced, useResource } from '@/lib/useResource';
 import type { Material, StockSummary } from '@/types/domain';
 
@@ -59,10 +59,15 @@ function AdjustStockModal({
 
   const submit = async () => {
     if (!material) return;
-    const key = variantKey || material.variants[0]?.key;
+    // Chave vazia é legítima: é o material que não tem variação.
+    const key = variantKey || material.variants[0]?.key || '';
     const delta = direction * Math.abs(Number(amount) || 0);
-    if (!key || !delta) {
-      toast.error('Informe a variante e a quantidade.');
+    if (materialVaries(material) && !key) {
+      toast.error(`Informe ${(material.variantLabel || 'a variante').toLowerCase()}.`);
+      return;
+    }
+    if (!delta) {
+      toast.error('Informe a quantidade.');
       return;
     }
     setSaving(true);
@@ -77,7 +82,7 @@ function AdjustStockModal({
       } else {
         toast.success(
           'Estoque atualizado',
-          `${delta > 0 ? 'Entrada' : 'Saída'} de ${Math.abs(delta)} em ${material.name} (${key}).`,
+          `${delta > 0 ? 'Entrada' : 'Saída'} de ${Math.abs(delta)} em ${variantLabelOf(material.name, material.variantLabel, key)}.`,
         );
       }
       onDone();
@@ -111,15 +116,17 @@ function AdjustStockModal({
     >
       {material ? (
         <div className="space-y-4 pt-1">
-          <Select
-            label={material.variantLabel}
-            value={variantKey || material.variants[0]?.key || ''}
-            onChange={(event) => setVariantKey(event.target.value)}
-            options={material.variants.map((item) => ({
-              value: item.key,
-              label: `${item.key} — ${item.stock} em estoque`,
-            }))}
-          />
+          {materialVaries(material) ? (
+            <Select
+              label={material.variantLabel || 'Variante'}
+              value={variantKey || material.variants[0]?.key || ''}
+              onChange={(event) => setVariantKey(event.target.value)}
+              options={material.variants.map((item) => ({
+                value: item.key,
+                label: `${item.key} — ${item.stock} em estoque`,
+              }))}
+            />
+          ) : null}
 
           <div className="grid grid-cols-[1fr_auto] items-end gap-3">
             <Input
@@ -197,8 +204,14 @@ function VariantChip({
       )}
       title={`${variant.stock} ${pluralizeUnit(unit, variant.stock)}`}
     >
-      <span className="font-semibold">{variant.key}</span>
-      <span className="tabular opacity-60">{variant.stock}</span>
+      {/* Sem variação a chave é vazia: sobra só o saldo, com a unidade por extenso. */}
+      {variant.key ? <span className="font-semibold">{variant.key}</span> : null}
+      <span className={cn('tabular', variant.key ? 'opacity-60' : 'font-semibold')}>
+        {variant.stock}
+      </span>
+      {variant.key ? null : (
+        <span className="opacity-60">{pluralizeUnit(unit, variant.stock)}</span>
+      )}
     </span>
   );
 }
@@ -299,7 +312,7 @@ export default function Materials() {
 
                   <div className="mt-5">
                     <p className="mb-2 text-[0.66rem] font-semibold uppercase tracking-wider text-bone-100/35">
-                      {material.variantLabel}
+                      {materialVaries(material) ? material.variantLabel : 'Sem variações'}
                     </p>
                     <div className="flex flex-wrap gap-1.5">
                       {material.variants.map((variant) => (

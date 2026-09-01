@@ -53,12 +53,26 @@ export function termPlaceAndDate(company: CompanyInfo, date: Date): string {
 }
 
 /**
+ * "Camisa — Tamanho G", ou apenas "Crachá" quando o material não varia.
+ *
+ * Material sem variação não ganha sufixo: "Crachá funcional", e não
+ * "Crachá funcional — Unidade Padrão". Vale para o termo, para o Slack e
+ * para as mensagens de erro — o nome do item é sempre o mesmo.
+ */
+export function variantDescription(
+  name: string,
+  variantLabel: string | undefined,
+  variantKey: string | undefined,
+): string {
+  return variantKey ? `${name} — ${variantLabel || 'Variante'} ${variantKey}` : name;
+}
+
+/**
  * Descrição do material como aparece na tabela do termo — a variante entra
  * junto do nome, exatamente como pedido: "Camisa — Tamanho G".
  */
 export function itemDescription(item: DeliveryItem): string {
-  const parts: string[] = [item.name];
-  if (item.variantKey) parts.push(`${item.variantLabel || 'Variante'} ${item.variantKey}`);
+  const parts: string[] = [variantDescription(item.name, item.variantLabel, item.variantKey)];
   const extras = Object.entries(item.customValues ?? {})
     .filter(([, value]) => String(value ?? '').trim().length > 0)
     .map(([label, value]) => `${label}: ${value}`);

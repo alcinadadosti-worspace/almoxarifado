@@ -97,6 +97,8 @@ export default function MaterialEditor() {
   const [saving, setSaving] = useState(false);
   /** Variantes que já existiam ao abrir: o saldo delas só muda por movimento. */
   const [lockedKeys, setLockedKeys] = useState<Set<string>>(new Set());
+  /** Desligado = item contado por um número só (crachá, kit). */
+  const [hasVariants, setHasVariants] = useState(true);
 
   useEffect(() => {
     if (!id) return;
@@ -107,6 +109,7 @@ export default function MaterialEditor() {
         if (!active) return;
         const material = response.material;
         setLockedKeys(new Set(material.variants.map((variant) => variant.key)));
+        setHasVariants(!(material.variants.length === 1 && !material.variants[0].key));
         setForm({
           name: material.name,
           category: material.category,
@@ -134,6 +137,22 @@ export default function MaterialEditor() {
   }, [id, navigate, toast]);
 
   const patch = (values: Partial<FormState>) => setForm((current) => ({ ...current, ...values }));
+
+  // Alternar o modo reescreve as linhas: sem variação existe uma única linha
+  // sem nome; com variação, uma linha em branco para preencher.
+  const toggleVariants = (enabled: boolean) => {
+    setHasVariants(enabled);
+    if (enabled) {
+      patch({
+        variants: form.variants.every((variant) => !variant.key)
+          ? [{ key: '', stock: form.variants[0]?.stock ?? 0 }]
+          : form.variants,
+      });
+    } else {
+      const total = form.variants.reduce((sum, variant) => sum + (Number(variant.stock) || 0), 0);
+      patch({ variants: [{ key: '', stock: total, minStock: form.variants[0]?.minStock }] });
+    }
+  };
 
   const totalStock = useMemo(
     () => form.variants.reduce((sum, variant) => sum + (Number(variant.stock) || 0), 0),
@@ -173,19 +192,23 @@ export default function MaterialEditor() {
     event.preventDefault();
     setErrors({});
 
+    // Sem variação a única linha vale mesmo sem nome — ela *é* o material.
+    // Com variação, linhas em branco são descartadas em silêncio.
+    const rows = hasVariants
+      ? form.variants.filter((variant) => variant.key.trim())
+      : form.variants.slice(0, 1).map((variant) => ({ ...variant, key: '' }));
+
     const payload = {
       ...form,
       notes: form.notes || undefined,
-      variants: form.variants
-        .filter((variant) => variant.key.trim())
-        .map((variant) => ({
-          key: variant.key.trim(),
-          stock: Number(variant.stock) || 0,
-          minStock:
-            variant.minStock === undefined || variant.minStock === null || Number.isNaN(variant.minStock)
-              ? undefined
-              : Number(variant.minStock),
-        })),
+      variants: rows.map((variant) => ({
+        key: variant.key.trim(),
+        stock: Number(variant.stock) || 0,
+        minStock:
+          variant.minStock === undefined || variant.minStock === null || Number.isNaN(variant.minStock)
+            ? undefined
+            : Number(variant.minStock),
+      })),
       customFields: form.customFields
         .filter((field) => field.label.trim())
         .map((field) => ({
@@ -196,7 +219,7 @@ export default function MaterialEditor() {
     };
 
     if (!payload.variants.length) {
-      setErrors({ variants: 'Cadastre ao menos uma variante com chave preenchida.' });
+      setErrors({ variants: 'Dê um nome a ao menos uma variante (PP, 40, Azul…).' });
       return;
     }
 
@@ -354,153 +377,210 @@ export default function MaterialEditor() {
           {/* --------------------------------------------------- variações */}
           <Section
             index="02"
-            title="Eixo de variação"
-            description="O que diferencia uma peça da outra: tamanho, numeração, voltagem… Você dá o nome e cria quantas variantes precisar, cada uma com seu estoque."
+            title={hasVariants ? 'Eixo de variação' : 'Quantidade em estoque'}
+            description={
+              hasVariants
+                ? 'O que diferencia uma peça da outra: tamanho, numeração, voltagem… Você dá o nome e cria quantas variantes precisar, cada uma com seu estoque.'
+                : 'Este item é contado por um número só — sem tamanho, numeração ou cor.'
+            }
           >
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <Input
-                  label="Como este material varia?"
-                  list="axis-suggestions"
-                  value={form.variantLabel}
-                  onChange={(event) => patch({ variantLabel: event.target.value })}
-                  placeholder="Tamanho"
-                  hint="O nome do que muda de uma peça para outra."
-                />
-                <datalist id="axis-suggestions">
-                  {AXIS_SUGGESTIONS.map((axis) => (
-                    <option key={axis} value={axis} />
-                  ))}
-                </datalist>
-                <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                  <span className="text-[0.68rem] text-bone-100/30">Atalhos:</span>
-                  {AXIS_SUGGESTIONS.slice(0, 4).map((axis) => (
-                    <button
-                      key={axis}
-                      type="button"
-                      onClick={() => patch({ variantLabel: axis })}
-                      className={cn(
-                        'rounded-full border px-2.5 py-1 text-[0.68rem] transition-colors',
-                        form.variantLabel === axis
-                          ? 'border-gold-400/50 bg-gold-400/10 text-gold-200'
-                          : 'border-white/[0.09] text-bone-100/40 hover:border-white/20 hover:text-bone-100',
-                      )}
-                    >
-                      {axis}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <Select
-                label="Tipo de variação"
-                value={form.variantType}
-                onChange={(event) => patch({ variantType: event.target.value as VariantType })}
-                options={[
-                  { value: 'letter', label: 'Letras (PP, P, M, G, GG)' },
-                  { value: 'number', label: 'Números (35, 40, 45)' },
-                  { value: 'custom', label: 'Livre (cor, voltagem, qualquer coisa)' },
-                ]}
-              />
-            </div>
+            <Switch
+              label="Este material tem variações"
+              hint="Desligue para itens que não variam, como crachá ou kit: aí basta a quantidade."
+              checked={hasVariants}
+              onChange={toggleVariants}
+            />
 
-            <div className="mt-5 flex flex-wrap items-center gap-2">
-              <span className="text-[0.7rem] uppercase tracking-wider text-bone-100/35">
-                Preencher rápido:
-              </span>
-              <Button type="button" size="sm" variant="ghost" onClick={() => addVariants(LETTER_PRESET)}>
-                PP → XGG
-              </Button>
-              <Button type="button" size="sm" variant="ghost" onClick={() => addVariants(SHOE_PRESET)}>
-                34 → 44
-              </Button>
+            {!hasVariants ? (
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                <Input
+                  label={`Quantidade em estoque (${form.unit || 'unidade'})`}
+                  type="number"
+                  min={0}
+                  value={String(form.variants[0]?.stock ?? 0)}
+                  disabled={lockedKeys.has('')}
+                  title={
+                    lockedKeys.has('')
+                      ? 'O saldo muda apenas por movimento auditado — use Ajustar estoque.'
+                      : undefined
+                  }
+                  onChange={(event) =>
+                    patch({ variants: [{ ...form.variants[0], key: '', stock: Number(event.target.value) || 0 }] })
+                  }
+                  hint={
+                    lockedKeys.has('')
+                      ? 'Use "Ajustar estoque" na lista de materiais para alterar.'
+                      : undefined
+                  }
+                />
+                <Input
+                  label="Alerta de estoque baixo"
+                  type="number"
+                  min={0}
+                  placeholder="padrão"
+                  value={form.variants[0]?.minStock === undefined ? '' : String(form.variants[0].minStock)}
+                  onChange={(event) =>
+                    patch({
+                      variants: [
+                        {
+                          ...form.variants[0],
+                          key: '',
+                          minStock: event.target.value === '' ? undefined : Number(event.target.value),
+                        },
+                      ],
+                    })
+                  }
+                  hint="Em branco usa o limite geral das Configurações."
+                />
+              </div>
+            ) : (
+              <>
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                <div>
+                  <Input
+                    label="Como este material varia?"
+                    list="axis-suggestions"
+                    value={form.variantLabel}
+                    onChange={(event) => patch({ variantLabel: event.target.value })}
+                    placeholder="Tamanho"
+                    hint="O nome do que muda de uma peça para outra."
+                  />
+                  <datalist id="axis-suggestions">
+                    {AXIS_SUGGESTIONS.map((axis) => (
+                      <option key={axis} value={axis} />
+                    ))}
+                  </datalist>
+                  <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                    <span className="text-[0.68rem] text-bone-100/30">Atalhos:</span>
+                    {AXIS_SUGGESTIONS.slice(0, 4).map((axis) => (
+                      <button
+                        key={axis}
+                        type="button"
+                        onClick={() => patch({ variantLabel: axis })}
+                        className={cn(
+                          'rounded-full border px-2.5 py-1 text-[0.68rem] transition-colors',
+                          form.variantLabel === axis
+                            ? 'border-gold-400/50 bg-gold-400/10 text-gold-200'
+                            : 'border-white/[0.09] text-bone-100/40 hover:border-white/20 hover:text-bone-100',
+                        )}
+                      >
+                        {axis}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <Select
+                  label="Tipo de variação"
+                  value={form.variantType}
+                  onChange={(event) => patch({ variantType: event.target.value as VariantType })}
+                  options={[
+                    { value: 'letter', label: 'Letras (PP, P, M, G, GG)' },
+                    { value: 'number', label: 'Números (35, 40, 45)' },
+                    { value: 'custom', label: 'Livre (cor, voltagem, qualquer coisa)' },
+                  ]}
+                />
+              </div>
+
+              <div className="mt-5 flex flex-wrap items-center gap-2">
+                <span className="text-[0.7rem] uppercase tracking-wider text-bone-100/35">
+                  Preencher rápido:
+                </span>
+                <Button type="button" size="sm" variant="ghost" onClick={() => addVariants(LETTER_PRESET)}>
+                  PP → XGG
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => addVariants(SHOE_PRESET)}>
+                  34 → 44
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => addVariants(['35', '40', '45'])}
+                >
+                  35 · 40 · 45
+                </Button>
+              </div>
+
+              <div className="mt-5 space-y-2">
+                <div className="hidden grid-cols-[1.4fr_1fr_1fr_auto] gap-3 px-1 text-[0.64rem] font-semibold uppercase tracking-wider text-bone-100/30 sm:grid">
+                  <span>{form.variantLabel || 'Variante'}</span>
+                  <span>Estoque</span>
+                  <span>Mínimo</span>
+                  <span />
+                </div>
+
+                {form.variants.map((variant, index) => (
+                  <div
+                    key={index}
+                    className="grid grid-cols-[1fr_auto] gap-3 rounded-xl border border-white/[0.06] bg-white/[0.015] p-3 sm:grid-cols-[1.4fr_1fr_1fr_auto] sm:border-0 sm:bg-transparent sm:p-0"
+                  >
+                    <Input
+                      placeholder={form.variantType === 'number' ? '40' : 'G'}
+                      value={variant.key}
+                      onChange={(event) => setVariant(index, { key: event.target.value })}
+                    />
+                    <Input
+                      type="number"
+                      min={0}
+                      placeholder="0"
+                      value={String(variant.stock ?? 0)}
+                      disabled={lockedKeys.has(variant.key)}
+                      title={
+                        lockedKeys.has(variant.key)
+                          ? 'O saldo desta variante muda apenas por movimento auditado.'
+                          : undefined
+                      }
+                      onChange={(event) => setVariant(index, { stock: Number(event.target.value) })}
+                    />
+                    <Input
+                      type="number"
+                      min={0}
+                      placeholder="padrão"
+                      value={variant.minStock === undefined ? '' : String(variant.minStock)}
+                      onChange={(event) =>
+                        setVariant(index, {
+                          minStock: event.target.value === '' ? undefined : Number(event.target.value),
+                        })
+                      }
+                    />
+                    <button
+                      type="button"
+                      aria-label="Remover variante"
+                      onClick={() =>
+                        patch({ variants: form.variants.filter((_, position) => position !== index) })
+                      }
+                      className="grid h-12 w-12 place-items-center rounded-xl border border-white/[0.07] text-bone-100/35 transition-colors hover:border-red-400/40 hover:text-red-300"
+                    >
+                      <IconTrash width={16} height={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {errors.variants ? (
+                <p className="mt-3 text-[0.76rem] text-red-400">{errors.variants}</p>
+              ) : null}
+
               <Button
                 type="button"
+                variant="outline"
                 size="sm"
-                variant="ghost"
-                onClick={() => addVariants(['35', '40', '45'])}
+                className="mt-4"
+                icon={<IconPlus width={14} height={14} />}
+                onClick={() => patch({ variants: [...form.variants, { key: '', stock: 0 }] })}
               >
-                35 · 40 · 45
+                Adicionar variante
               </Button>
-            </div>
 
-            <div className="mt-5 space-y-2">
-              <div className="hidden grid-cols-[1.4fr_1fr_1fr_auto] gap-3 px-1 text-[0.64rem] font-semibold uppercase tracking-wider text-bone-100/30 sm:grid">
-                <span>{form.variantLabel || 'Variante'}</span>
-                <span>Estoque</span>
-                <span>Mínimo</span>
-                <span />
-              </div>
-
-              {form.variants.map((variant, index) => (
-                <div
-                  key={index}
-                  className="grid grid-cols-[1fr_auto] gap-3 rounded-xl border border-white/[0.06] bg-white/[0.015] p-3 sm:grid-cols-[1.4fr_1fr_1fr_auto] sm:border-0 sm:bg-transparent sm:p-0"
-                >
-                  <Input
-                    placeholder={form.variantType === 'number' ? '40' : 'G'}
-                    value={variant.key}
-                    onChange={(event) => setVariant(index, { key: event.target.value })}
-                  />
-                  <Input
-                    type="number"
-                    min={0}
-                    placeholder="0"
-                    value={String(variant.stock ?? 0)}
-                    disabled={lockedKeys.has(variant.key)}
-                    title={
-                      lockedKeys.has(variant.key)
-                        ? 'O saldo desta variante muda apenas por movimento auditado.'
-                        : undefined
-                    }
-                    onChange={(event) => setVariant(index, { stock: Number(event.target.value) })}
-                  />
-                  <Input
-                    type="number"
-                    min={0}
-                    placeholder="padrão"
-                    value={variant.minStock === undefined ? '' : String(variant.minStock)}
-                    onChange={(event) =>
-                      setVariant(index, {
-                        minStock: event.target.value === '' ? undefined : Number(event.target.value),
-                      })
-                    }
-                  />
-                  <button
-                    type="button"
-                    aria-label="Remover variante"
-                    onClick={() =>
-                      patch({ variants: form.variants.filter((_, position) => position !== index) })
-                    }
-                    className="grid h-12 w-12 place-items-center rounded-xl border border-white/[0.07] text-bone-100/35 transition-colors hover:border-red-400/40 hover:text-red-300"
-                  >
-                    <IconTrash width={16} height={16} />
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            {errors.variants ? (
-              <p className="mt-3 text-[0.76rem] text-red-400">{errors.variants}</p>
-            ) : null}
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="mt-4"
-              icon={<IconPlus width={14} height={14} />}
-              onClick={() => patch({ variants: [...form.variants, { key: '', stock: 0 }] })}
-            >
-              Adicionar variante
-            </Button>
-
-            {editing ? (
-              <p className="mt-4 rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3 text-[0.76rem] leading-relaxed text-bone-100/45">
-                O saldo das variantes já existentes só muda por movimento auditado — use
-                <strong className="text-bone-100/70"> Ajustar estoque</strong> na lista de materiais.
-                Variantes novas entram com o saldo informado aqui.
-              </p>
-            ) : null}
+              {editing ? (
+                <p className="mt-4 rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3 text-[0.76rem] leading-relaxed text-bone-100/45">
+                  O saldo das variantes já existentes só muda por movimento auditado — use
+                  <strong className="text-bone-100/70"> Ajustar estoque</strong> na lista de materiais.
+                  Variantes novas entram com o saldo informado aqui.
+                </p>
+              ) : null}
+              </>
+            )}
           </Section>
 
           {/* ---------------------------------------------- campos extras */}
@@ -617,7 +697,7 @@ export default function MaterialEditor() {
                 {[
                   ['Categoria', form.category || '—'],
                   ['Unidade', form.unit || '—'],
-                  ['Eixo', form.variantLabel || '—'],
+                  ...(hasVariants ? [['Eixo', form.variantLabel || '—']] : []),
                   ['Conservação', form.conservationDefault || '—'],
                 ].map(([label, value]) => (
                   <div key={label} className="flex items-baseline justify-between gap-4">
@@ -641,9 +721,11 @@ export default function MaterialEditor() {
 
               <div className="mt-6 flex items-center justify-between border-t border-white/[0.06] pt-5">
                 <span className="text-[0.76rem] text-bone-100/40">
-                  {form.variants.filter((variant) => variant.key.trim()).length} variantes
+                  {hasVariants
+                    ? `${form.variants.filter((variant) => variant.key.trim()).length} variantes`
+                    : 'Sem variações'}
                 </span>
-                <Badge tone="gold">{totalStock} em estoque</Badge>
+                <Badge tone="gold">{quantityLabel(totalStock, form.unit || 'unidade')} em estoque</Badge>
               </div>
             </div>
           </Reveal>

@@ -117,9 +117,11 @@ const materials: MaterialSeed[] = [
     brand: 'Grupo Alcina Maria',
     model: 'PVC com cordão',
     conservationDefault: 'Novo',
-    variantLabel: 'Unidade',
+    // Exemplo de material SEM variação: uma linha só, sem chave. No termo sai
+    // "Crachá funcional", e não "Crachá funcional — Unidade Padrão".
+    variantLabel: '',
     variantType: 'custom',
-    variants: [{ key: 'Padrão', stock: 40 }],
+    variants: [{ key: '', stock: 40 }],
     customFields: [{ label: 'Loja', type: 'text' }],
     unit: 'unidade',
     active: true,

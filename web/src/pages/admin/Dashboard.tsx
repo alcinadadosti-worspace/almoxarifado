@@ -229,7 +229,8 @@ export default function Dashboard() {
                         {alert.materialName}
                       </p>
                       <p className="text-[0.72rem] text-bone-100/40">
-                        {alert.variantLabel} {alert.variantKey} · mínimo {alert.threshold}
+                        {alert.variantKey ? `${alert.variantLabel} ${alert.variantKey} · ` : ''}
+                        mínimo {alert.threshold}
                       </p>
                     </div>
                     <Badge tone={alert.stock === 0 ? 'danger' : 'gold'}>
@@ -271,8 +272,10 @@ export default function Dashboard() {
                       {movement.delta > 0 ? '+' : ''}
                       {movement.delta}
                     </span>{' '}
-                    {movement.materialName}{' '}
-                    <span className="text-bone-100/40">({movement.variantKey})</span>
+                    {movement.materialName}
+                    {movement.variantKey ? (
+                      <span className="text-bone-100/40"> ({movement.variantKey})</span>
+                    ) : null}
                   </p>
                   <p className="mt-0.5 text-[0.7rem] text-bone-100/35">
                     {MOVEMENT_REASON_LABEL[movement.reason] ?? movement.reason} ·{' '}

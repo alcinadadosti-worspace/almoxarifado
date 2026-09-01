@@ -9,8 +9,10 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
-# dados locais do driver de desenvolvimento (contêm CPF/assinaturas)
-server/.data/
+# dados locais do driver de desenvolvimento (contêm CPF/assinaturas).
+# A pasta nasce em `cwd/.data`: fica em server/ pelo `npm run dev`, mas na raiz
+# se alguém subir o servidor de lá. Ignorada em qualquer nível, por segurança.
+.data/
 server/service-account.json
 *.pem
 .firebase/

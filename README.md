@@ -150,9 +150,21 @@ cadastra o material decide como ele varia.
 }
 ```
 
+**Material sem variação.** Nem tudo varia: um crachá, um kit. Nesse caso o material tem uma
+única linha com `key` vazia — é só quantidade:
+
+```jsonc
+"variants": [{ "key": "", "stock": 40 }]
+```
+
+No formulário isso é o interruptor *"Este material tem variações"*; desligado, a seção 02 vira
+um campo de quantidade. O termo então imprime `Crachá funcional`, sem o sufixo de eixo. Quando
+há mais de uma variante, toda linha continua exigindo um nome — duas variantes sem nome seriam a
+mesma coisa no estoque e no termo.
+
 Os exemplos do seed cobrem os casos pedidos: **Camisa** por letra (PP=20, P=10, G=5), **Calça**
 por numeração (35/40/45) medida em **dezena**, **Tênis** em **pares**, além de Moletom, Blazer e
-um item de eixo livre (Crachá).
+o **Crachá**, sem variação.
 
 ### `employees`
 
@@ -224,7 +236,7 @@ recusados com uma mensagem pedindo que se configure o Cloud Storage.
 
 ## Fluxo ponta a ponta
 
-1. **Nova entrega** — o admin escolhe material + variante + quantidade. Descrição, marca/modelo,
+1. **Nova entrega** — o admin escolhe material + variante (quando houver) + quantidade. Descrição, marca/modelo,
    quantidade e estado de conservação vêm do cadastro; o colaborador não preenche nada disso.
    A disponibilidade é validada na criação (`409` se faltar saldo).
 2. **Envio** — o backend chama `notifier.sendDeliveryInvite()`. Com Slack configurado, o bot manda

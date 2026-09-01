@@ -12,7 +12,13 @@ import { Reveal } from '@/components/ui/Reveal';
 import { useToast } from '@/components/ui/Toast';
 import { ApiError, api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { pluralizeUnit, quantityLabel, slackErrorMessage } from '@/lib/format';
+import {
+  materialVaries,
+  pluralizeUnit,
+  quantityLabel,
+  slackErrorMessage,
+  variantLabelOf,
+} from '@/lib/format';
 import { useResource } from '@/lib/useResource';
 import type { DeliveryDto, Employee, Material, NotificationStatus } from '@/types/domain';
 
@@ -81,8 +87,12 @@ export default function DeliveryNew() {
   const selectedEmployee = people?.employees.find((employee) => employee.id === employeeId);
 
   const addItem = () => {
-    if (!material || !pickVariant) {
-      toast.error('Escolha o material e a variante.');
+    if (!material) {
+      toast.error('Escolha o material.');
+      return;
+    }
+    if (materialVaries(material) && !pickVariant) {
+      toast.error(`Escolha ${(material.variantLabel || 'a variante').toLowerCase()}.`);
       return;
     }
     const quantity = Math.max(1, Number(pickQuantity) || 1);
@@ -90,7 +100,7 @@ export default function DeliveryNew() {
     if (variant && variant.stock < quantity) {
       toast.error(
         'Estoque insuficiente',
-        `${material.name} (${pickVariant}) tem apenas ${variant.stock} disponível.`,
+        `${variantLabelOf(material.name, material.variantLabel, pickVariant)} tem apenas ${quantityLabel(variant.stock, material.unit)} em estoque.`,
       );
       return;
     }
@@ -283,17 +293,29 @@ export default function DeliveryNew() {
                       label: `${entry.name}${entry.brand ? ` · ${entry.brand}` : ''}`,
                     }))}
                   />
-                  <Select
-                    label={material?.variantLabel ?? 'Variante'}
-                    value={pickVariant}
-                    disabled={!material}
-                    onChange={(event) => setPickVariant(event.target.value)}
-                    options={(material?.variants ?? []).map((variant) => ({
-                      value: variant.key,
-                      label: `${variant.key} — ${variant.stock} disp.`,
-                      disabled: variant.stock === 0,
-                    }))}
-                  />
+                  {materialVaries(material) ? (
+                    <Select
+                      label={material?.variantLabel || 'Variante'}
+                      value={pickVariant}
+                      disabled={!material}
+                      onChange={(event) => setPickVariant(event.target.value)}
+                      options={(material?.variants ?? []).map((variant) => ({
+                        value: variant.key,
+                        label: `${variant.key} — ${variant.stock} disp.`,
+                        disabled: variant.stock === 0,
+                      }))}
+                    />
+                  ) : (
+                    // Sem variação não há o que escolher: o campo vira o saldo.
+                    <div>
+                      <span className="mb-1.5 block text-[0.7rem] font-medium uppercase tracking-wider text-bone-100/45">
+                        Disponível
+                      </span>
+                      <p className="flex h-12 items-center rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 text-[0.88rem] text-bone-100/70">
+                        {quantityLabel(material?.variants[0]?.stock ?? 0, material?.unit ?? 'unidade')}
+                      </p>
+                    </div>
+                  )}
                   <Input
                     label="Qtd."
                     type="number"
@@ -369,7 +391,7 @@ export default function DeliveryNew() {
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[0.88rem] font-semibold text-bone-50">
-                          {source?.name} — {source?.variantLabel} {draft.variantKey}
+                          {variantLabelOf(source?.name, source?.variantLabel, draft.variantKey)}
                         </p>
                         <p className="mt-0.5 truncate text-[0.74rem] text-bone-100/40">
                           {[source?.brand, source?.model].filter(Boolean).join(' / ') || 'Sem marca'}
@@ -464,7 +486,7 @@ export default function DeliveryNew() {
                         </span>
                         <span className="flex-1 text-bone-100/80">
                           <span className="font-display text-[0.98rem] italic text-gold-200">
-                            {source?.name} — {source?.variantLabel} {draft.variantKey}
+                            {variantLabelOf(source?.name, source?.variantLabel, draft.variantKey)}
                           </span>
                           <br />
                           <span className="text-[0.76rem] text-bone-100/40">

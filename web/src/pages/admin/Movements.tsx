@@ -53,9 +53,11 @@ export default function Movements() {
                   <div className="min-w-0">
                     <p className="truncate text-[0.88rem] font-medium text-bone-50">
                       {movement.materialName}
-                      <span className="ml-2 text-[0.76rem] font-normal text-bone-100/40">
-                        {movement.variantKey}
-                      </span>
+                      {movement.variantKey ? (
+                        <span className="ml-2 text-[0.76rem] font-normal text-bone-100/40">
+                          {movement.variantKey}
+                        </span>
+                      ) : null}
                     </p>
                     <p className="mt-0.5 text-[0.72rem] text-bone-100/35 lg:hidden">
                       {MOVEMENT_REASON_LABEL[movement.reason] ?? movement.reason} ·{' '}

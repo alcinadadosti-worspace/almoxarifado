@@ -6,7 +6,7 @@ import type {
   DeliveryInput,
   DeliveryReturnInput,
 } from '../domain/schemas';
-import { itemDescription, itemQuantityLabel } from '../domain/term';
+import { itemDescription, itemQuantityLabel, variantDescription } from '../domain/term';
 import type {
   AuthenticatedAdmin,
   Delivery,
@@ -80,12 +80,14 @@ async function buildItems(input: DeliveryInput['items']): Promise<DeliveryItem[]
     const variant = material.variants.find((v) => v.key === raw.variantKey);
     if (!variant) {
       throw HttpError.badRequest(
-        `A variante "${raw.variantKey}" não existe em ${material.name}.`,
+        raw.variantKey
+          ? `A variante "${raw.variantKey}" não existe em ${material.name}.`
+          : `Escolha ${(material.variantLabel || 'a variante').toLowerCase()} de ${material.name}.`,
       );
     }
     if (variant.stock < raw.quantity) {
       throw HttpError.conflict(
-        `Estoque insuficiente de ${material.name} (${material.variantLabel} ${variant.key}): ` +
+        `Estoque insuficiente de ${variantDescription(material.name, material.variantLabel, variant.key)}: ` +
           `disponível ${variant.stock}, solicitado ${raw.quantity}.`,
         'insufficient_stock',
       );
