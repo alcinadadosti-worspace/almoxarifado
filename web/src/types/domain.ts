@@ -47,6 +47,8 @@ export interface Employee {
   cpf: string;
   cpfFormatted?: string;
   cpfMasked?: string;
+  /** Faltam CPF, cargo ou setor — completa-se na primeira assinatura. */
+  incomplete?: boolean;
   role: string;
   sector: string;
   email?: string;

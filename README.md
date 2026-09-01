@@ -537,6 +537,7 @@ npm start         # sobe a API — que também serve o build do frontend
 | `npm run seed` | materiais e colaboradores de exemplo (`-- --force` recria). Com uma chave do Firebase na pasta, **recusa** gravar no Firestore: use `DATA_DRIVER=local npm run seed` para o ambiente local, ou `-- --production` se for intencional |
 | `npm run typecheck` | TypeScript nos dois pacotes |
 | `npm run trace:monogram` | regenera SVG/geometria do monograma a partir do PNG |
+| `node tools/import-employees.mjs <planilha> [--aplicar]` | importa colaboradores de .xlsx/.csv; sem `--aplicar` só confere. Nunca envia mensagem no Slack |
 | `npm run firestore:indexes` | cria no Firestore os índices de `firestore.indexes.json` (exige o papel *Cloud Datastore Index Admin* na conta de serviço) |
 
 ---

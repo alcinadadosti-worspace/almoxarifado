@@ -83,11 +83,24 @@ export const stockAdjustmentSchema = z.object({
 
 /* --------------------------------------------------------- colaboradores */
 
+/**
+ * Só o nome é exigido no cadastro.
+ *
+ * CPF, cargo e setor entram sozinhos na primeira assinatura — é lá que o
+ * colaborador confere e completa os próprios dados, e a ficha é atualizada.
+ * Exigir tudo aqui impediria importar uma lista de pessoas do Slack, que é
+ * como o cadastro realmente começa.
+ */
 export const employeeInputSchema = z.object({
   fullName: requiredText(140, 'O nome completo'),
-  cpf: cpfSchema,
-  role: requiredText(90, 'O cargo/função'),
-  sector: requiredText(90, 'O setor/unidade'),
+  cpf: z
+    .string()
+    .trim()
+    .transform(onlyDigits)
+    .refine((value) => value === '' || isValidCpf(value), { message: 'CPF inválido.' })
+    .default(''),
+  role: trimmed(90).default(''),
+  sector: trimmed(90).default(''),
   email: z.string().trim().email({ message: 'E-mail inválido.' }).optional().or(z.literal('')),
   slackUserId: trimmed(30).optional(),
   active: z.boolean().default(true),

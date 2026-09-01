@@ -27,15 +27,18 @@ export function Badge({
   surface = 'dark',
   dot,
   className,
+  title,
 }: {
   children: ReactNode;
   tone?: Tone;
   surface?: 'dark' | 'light';
   dot?: boolean;
   className?: string;
+  title?: string;
 }) {
   return (
     <span
+      title={title}
       className={cn(
         'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.66rem] font-semibold uppercase tracking-wider',
         surface === 'dark' ? TONES[tone] : TONES_LIGHT[tone],

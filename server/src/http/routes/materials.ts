@@ -4,6 +4,7 @@ import { materialInputSchema, stockAdjustmentSchema } from '../../domain/schemas
 import type { Material } from '../../domain/types';
 import { applyStockChanges, summarizeStock } from '../../services/stock';
 import { newId } from '../../utils/ids';
+import { matchesSearch } from '../../utils/search';
 import { currentAdmin, requireAdmin } from '../auth';
 import { HttpError, asyncRoute } from '../errors';
 
@@ -26,7 +27,7 @@ materialsRouter.get(
   asyncRoute(async (req, res) => {
     const settings = await getSettings();
     const includeInactive = req.query.includeInactive === 'true';
-    const search = String(req.query.search ?? '').trim().toLowerCase();
+    const search = String(req.query.search ?? '').trim();
     const category = String(req.query.category ?? '').trim();
 
     let materials = await collections.materials.list({ orderBy: ['name', 'asc'] });
@@ -34,10 +35,7 @@ materialsRouter.get(
     if (category) materials = materials.filter((material) => material.category === category);
     if (search) {
       materials = materials.filter((material) =>
-        [material.name, material.brand, material.model, material.category]
-          .join(' ')
-          .toLowerCase()
-          .includes(search),
+        matchesSearch(search, material.name, material.brand, material.model, material.category),
       );
     }
 

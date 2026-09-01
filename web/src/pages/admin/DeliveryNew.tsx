@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { IconCheck, IconPlus, IconSend, IconSlack, IconTrash } from '@/components/icons';
 import { Badge } from '@/components/ui/Badge';
 import { Button, ButtonLink } from '@/components/ui/Button';
+import { Combobox } from '@/components/ui/Combobox';
 import { CopyButton } from '@/components/ui/CopyButton';
 import { Input, Select, Switch, Textarea } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
@@ -184,18 +185,19 @@ export default function DeliveryNew() {
               </div>
 
               <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                <Select
+                <Combobox
                   wrapperClassName="sm:col-span-2"
                   label="Colaborador cadastrado"
+                  placeholder="Digite o nome…"
+                  emptyLabel="— Enviar sem cadastro prévio —"
                   value={employeeId}
-                  onChange={(event) => setEmployeeId(event.target.value)}
-                  options={[
-                    { value: '', label: '— Enviar sem cadastro prévio —' },
-                    ...(people?.employees ?? []).map((employee) => ({
-                      value: employee.id,
-                      label: `${employee.fullName} · ${employee.sector}`,
-                    })),
-                  ]}
+                  onChange={setEmployeeId}
+                  options={(people?.employees ?? []).map((employee) => ({
+                    value: employee.id,
+                    label: employee.fullName,
+                    hint: [employee.role, employee.sector].filter(Boolean).join(' · ') || undefined,
+                    badge: employee.slackUserId ? 'Slack' : undefined,
+                  }))}
                 />
 
                 {employeeId ? (
@@ -204,13 +206,24 @@ export default function DeliveryNew() {
                       {selectedEmployee?.fullName}
                     </p>
                     <p className="mt-1 text-[0.76rem] text-bone-100/45">
-                      {selectedEmployee?.role} · {selectedEmployee?.sector} ·{' '}
-                      {selectedEmployee?.cpfMasked}
+                      {[
+                        selectedEmployee?.role,
+                        selectedEmployee?.sector,
+                        selectedEmployee?.cpfMasked,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ') || 'Dados pessoais ainda não cadastrados'}
                     </p>
                     <p className="mt-2 text-[0.72rem] text-bone-100/35">
-                      Os dados já vão pré-preenchidos na página de assinatura — o colaborador
-                      apenas confirma.
+                      {selectedEmployee?.incomplete
+                        ? 'O colaborador preenche CPF, cargo e setor ao assinar — a ficha dele é atualizada automaticamente.'
+                        : 'Os dados já vão pré-preenchidos na página de assinatura — o colaborador apenas confirma.'}
                     </p>
+                    {selectedEmployee && !selectedEmployee.slackUserId ? (
+                      <p className="mt-2 text-[0.72rem] text-gold-300/80">
+                        Sem ID do Slack: a entrega não vai por DM, você copia o link.
+                      </p>
+                    ) : null}
                   </div>
                 ) : (
                   <>

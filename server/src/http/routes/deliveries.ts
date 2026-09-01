@@ -18,6 +18,7 @@ import {
 } from '../../services/deliveries';
 import { notificationStatus } from '../../services/notifications';
 import { storage } from '../../services/storage';
+import { matchesSearch } from '../../utils/search';
 import { currentAdmin, requireAdmin } from '../auth';
 import { HttpError, asyncRoute } from '../errors';
 
@@ -44,7 +45,7 @@ deliveriesRouter.get(
   '/',
   asyncRoute(async (req, res) => {
     const status = String(req.query.status ?? '').trim();
-    const search = String(req.query.search ?? '').trim().toLowerCase();
+    const search = String(req.query.search ?? '').trim();
 
     let deliveries = await collections.deliveries.list({ orderBy: ['createdAt', 'desc'] });
     const counts = Object.fromEntries(STATUSES.map((value) => [value, 0])) as Record<
@@ -58,11 +59,13 @@ deliveriesRouter.get(
     }
     if (search) {
       deliveries = deliveries.filter((delivery) =>
-        [delivery.employeeDraft.fullName, delivery.employeeDraft.sector, delivery.employeeDraft.role]
-          .concat(delivery.items.map((item) => item.name))
-          .join(' ')
-          .toLowerCase()
-          .includes(search),
+        matchesSearch(
+          search,
+          delivery.employeeDraft.fullName,
+          delivery.employeeDraft.sector,
+          delivery.employeeDraft.role,
+          delivery.items.map((item) => item.name).join(' '),
+        ),
       );
     }
 

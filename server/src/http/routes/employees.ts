@@ -4,6 +4,7 @@ import { employeeInputSchema } from '../../domain/schemas';
 import type { Employee } from '../../domain/types';
 import { deliveryDto } from '../../services/deliveries';
 import { formatCpf, maskCpf } from '../../utils/cpf';
+import { matchesSearch } from '../../utils/search';
 import { newId } from '../../utils/ids';
 import { requireAdmin } from '../auth';
 import { HttpError, asyncRoute } from '../errors';
@@ -13,24 +14,23 @@ employeesRouter.use(requireAdmin);
 
 const dto = (employee: Employee) => ({
   ...employee,
-  cpfFormatted: formatCpf(employee.cpf),
-  cpfMasked: maskCpf(employee.cpf),
+  cpfFormatted: employee.cpf ? formatCpf(employee.cpf) : '',
+  cpfMasked: employee.cpf ? maskCpf(employee.cpf) : '',
+  /** Sem CPF, cargo ou setor: completa-se na primeira assinatura. */
+  incomplete: !employee.cpf || !employee.role || !employee.sector,
 });
 
 employeesRouter.get(
   '/',
   asyncRoute(async (req, res) => {
-    const search = String(req.query.search ?? '').trim().toLowerCase();
+    const search = String(req.query.search ?? '').trim();
     let employees = await collections.employees.list({ orderBy: ['fullName', 'asc'] });
     if (req.query.includeInactive !== 'true') {
       employees = employees.filter((employee) => employee.active);
     }
     if (search) {
       employees = employees.filter((employee) =>
-        [employee.fullName, employee.role, employee.sector, employee.cpf]
-          .join(' ')
-          .toLowerCase()
-          .includes(search),
+        matchesSearch(search, employee.fullName, employee.role, employee.sector, employee.cpf),
       );
     }
     res.json({ employees: employees.map(dto) });
@@ -61,8 +61,25 @@ employeesRouter.post(
   '/',
   asyncRoute(async (req, res) => {
     const input = employeeInputSchema.parse(req.body);
-    const duplicate = await collections.employees.findOne({ where: [['cpf', '==', input.cpf]] });
-    if (duplicate) throw HttpError.conflict('Já existe um colaborador com este CPF.', 'duplicate_cpf');
+
+    // CPF vazio é normal (a pessoa preenche ao assinar) — só checamos
+    // duplicidade quando ele existe; senão, o primeiro sem CPF bloquearia
+    // todos os outros.
+    if (input.cpf) {
+      const duplicate = await collections.employees.findOne({ where: [['cpf', '==', input.cpf]] });
+      if (duplicate) throw HttpError.conflict('Já existe um colaborador com este CPF.', 'duplicate_cpf');
+    }
+    if (input.slackUserId) {
+      const sameSlack = await collections.employees.findOne({
+        where: [['slackUserId', '==', input.slackUserId]],
+      });
+      if (sameSlack) {
+        throw HttpError.conflict(
+          `Este ID do Slack já está em ${sameSlack.fullName}.`,
+          'duplicate_slack_id',
+        );
+      }
+    }
 
     const now = new Date().toISOString();
     const employee: Employee = {
@@ -84,9 +101,22 @@ employeesRouter.put(
     if (!existing) throw HttpError.notFound('Colaborador não encontrado.');
     const input = employeeInputSchema.parse(req.body);
 
-    const duplicate = await collections.employees.findOne({ where: [['cpf', '==', input.cpf]] });
-    if (duplicate && duplicate.id !== existing.id) {
-      throw HttpError.conflict('Já existe um colaborador com este CPF.', 'duplicate_cpf');
+    if (input.cpf) {
+      const duplicate = await collections.employees.findOne({ where: [['cpf', '==', input.cpf]] });
+      if (duplicate && duplicate.id !== existing.id) {
+        throw HttpError.conflict('Já existe um colaborador com este CPF.', 'duplicate_cpf');
+      }
+    }
+    if (input.slackUserId) {
+      const sameSlack = await collections.employees.findOne({
+        where: [['slackUserId', '==', input.slackUserId]],
+      });
+      if (sameSlack && sameSlack.id !== existing.id) {
+        throw HttpError.conflict(
+          `Este ID do Slack já está em ${sameSlack.fullName}.`,
+          'duplicate_slack_id',
+        );
+      }
     }
 
     const employee: Employee = {

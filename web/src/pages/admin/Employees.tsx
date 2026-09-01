@@ -66,7 +66,8 @@ export default function Employees() {
 
   const submit = async () => {
     setErrors({});
-    if (!isValidCpf(form.cpf)) {
+    // CPF em branco é aceito: entra na primeira assinatura.
+    if (form.cpf.trim() && !isValidCpf(form.cpf)) {
       setErrors({ cpf: 'CPF inválido.' });
       return;
     }
@@ -142,15 +143,21 @@ export default function Employees() {
                       {employee.fullName}
                     </p>
                     <p className="mt-0.5 truncate text-[0.76rem] text-bone-100/40">
-                      {employee.role} · {employee.sector}
+                      {[employee.role, employee.sector].filter(Boolean).join(' · ') ||
+                        'Cargo e setor a confirmar'}
                     </p>
                   </div>
 
                   <span className="hidden font-mono text-[0.76rem] text-bone-100/35 md:block">
-                    {employee.cpfMasked ?? formatCpf(employee.cpf)}
+                    {employee.cpfMasked || '—'}
                   </span>
 
                   {employee.slackUserId ? <Badge tone="acqua">Slack</Badge> : null}
+                  {employee.incomplete ? (
+                    <Badge tone="muted" title="CPF, cargo ou setor entram na primeira assinatura">
+                      A completar
+                    </Badge>
+                  ) : null}
                   {!employee.active ? <Badge tone="muted">Inativo</Badge> : null}
 
                   <div className="flex items-center gap-2">
@@ -200,16 +207,15 @@ export default function Employees() {
           />
           <Input
             label="CPF"
-            required
             inputMode="numeric"
             value={form.cpf}
             error={errors.cpf}
             onChange={(event) => setForm({ ...form, cpf: formatCpf(event.target.value) })}
             placeholder="000.000.000-00"
+            hint="Opcional — o colaborador informa ao assinar."
           />
           <Input
             label="Cargo/Função"
-            required
             value={form.role}
             error={errors.role}
             onChange={(event) => setForm({ ...form, role: event.target.value })}
@@ -217,7 +223,6 @@ export default function Employees() {
           />
           <Input
             label="Setor/Unidade"
-            required
             value={form.sector}
             error={errors.sector}
             onChange={(event) => setForm({ ...form, sector: event.target.value })}

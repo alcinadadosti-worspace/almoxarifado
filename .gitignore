@@ -19,3 +19,7 @@ server/service-account.json
 
 # artefatos de build incremental do TypeScript
 *.tsbuildinfo
+
+# planilhas de colaboradores (nomes e IDs de pessoas reais)
+*.xlsx
+*.csv
