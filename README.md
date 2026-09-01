@@ -316,7 +316,10 @@ O módulo já está escrito (`server/src/slack/bolt.ts`) — falta só criar o a
 
 1. <https://api.slack.com/apps> → **Create New App › From scratch**.
 2. **OAuth & Permissions › Bot Token Scopes**:
-   `chat:write`, `chat:write.public`, `im:write`, `commands`, `app_mentions:read`.
+   `chat:write`, `im:write`, `commands`, `app_mentions:read`.
+
+   Só isso. `chat:write.public` serviria para postar em canal público sem ser membro —
+   como o bot é convidado no canal do administrativo (`/invite`), é privilégio sem uso.
 3. **Install to Workspace** → copie o `xoxb-…` para `SLACK_BOT_TOKEN`.
 4. **Basic Information › Signing Secret** → `SLACK_SIGNING_SECRET`.
 5. Aponte os endpoints para o seu domínio público:

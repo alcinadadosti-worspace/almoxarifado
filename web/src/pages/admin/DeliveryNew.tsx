@@ -11,7 +11,7 @@ import { Reveal } from '@/components/ui/Reveal';
 import { useToast } from '@/components/ui/Toast';
 import { ApiError, api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { pluralizeUnit, quantityLabel } from '@/lib/format';
+import { pluralizeUnit, quantityLabel, slackErrorMessage } from '@/lib/format';
 import { useResource } from '@/lib/useResource';
 import type { DeliveryDto, Employee, Material, NotificationStatus } from '@/types/domain';
 
@@ -532,7 +532,7 @@ export default function DeliveryNew() {
               <p className="text-[0.82rem] leading-relaxed text-bone-100/70">
                 {created.notification.ok
                   ? 'Mensagem enviada no Slack com o card do termo e o botão de assinar.'
-                  : 'O Slack não enviou a mensagem — copie o link abaixo e envie pelo canal que preferir.'}
+                  : slackErrorMessage(created.notification.reason)}
               </p>
             </div>
 

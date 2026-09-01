@@ -112,3 +112,37 @@ export const MOVEMENT_REASON_LABEL: Record<string, string> = {
   delivery_returned: 'Devolução',
   delivery_cancelled: 'Entrega cancelada',
 };
+
+/* ---------------------------------------------------------------- Slack */
+
+/**
+ * Traduz o motivo devolvido pela API do Slack em uma instrução acionável.
+ * O código de erro cru ("not_in_channel") não ajuda quem está no painel.
+ */
+export function slackErrorMessage(reason?: string): string {
+  switch (reason) {
+    case 'slack_not_configured':
+      return 'O Slack não está configurado neste servidor — copie o link e envie por outro canal.';
+    case 'slack_target_missing':
+      return 'Este colaborador não tem ID do Slack cadastrado. Informe o ID na ficha dele ou copie o link.';
+    case 'slack_not_in_channel':
+      return 'O bot não está neste canal. Abra o canal no Slack e use /invite @ACQUA Almoxarifado.';
+    case 'slack_channel_not_found':
+      return 'Canal ou usuário não encontrado no Slack. Confira o ID informado.';
+    case 'slack_missing_scope':
+    case 'slack_not_allowed_token_type':
+      return 'Falta uma permissão no app do Slack. Revise os escopos do bot e reinstale o app.';
+    case 'slack_invalid_auth':
+    case 'slack_token_revoked':
+    case 'slack_account_inactive':
+      return 'O token do bot é inválido ou foi revogado. Gere um novo em OAuth & Permissions.';
+    case 'slack_is_archived':
+      return 'Este canal está arquivado no Slack.';
+    case 'slack_admin_channel_missing':
+      return 'Nenhum canal do administrativo configurado (SLACK_ADMIN_CHANNEL).';
+    case 'not_sent':
+      return 'A entrega foi criada sem envio — copie o link abaixo.';
+    default:
+      return 'O Slack não conseguiu enviar a mensagem — copie o link e envie por outro canal.';
+  }
+}

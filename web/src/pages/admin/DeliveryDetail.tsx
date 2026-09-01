@@ -20,7 +20,7 @@ import { useToast } from '@/components/ui/Toast';
 import { ApiError, api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/cn';
-import { formatDateTime, quantityLabel } from '@/lib/format';
+import { formatDateTime, quantityLabel, slackErrorMessage } from '@/lib/format';
 import { useResource } from '@/lib/useResource';
 import type { AdminProfile, DeliveryDto, NotificationStatus } from '@/types/domain';
 
@@ -313,14 +313,17 @@ export default function DeliveryDetail() {
     if (!delivery) return;
     setBusy(true);
     try {
-      const response = await api.post<{ delivery: DeliveryDto; notification: { ok: boolean } }>(
+      const response = await api.post<{
+        delivery: DeliveryDto;
+        notification: { ok: boolean; reason?: string };
+      }>(
         `/api/deliveries/${delivery.id}/send`,
         {},
       );
       update(response.delivery);
       toast.success(
         response.notification.ok ? 'Enviado pelo Slack' : 'Entrega marcada como enviada',
-        response.notification.ok ? undefined : 'Copie o link e envie manualmente.',
+        response.notification.ok ? undefined : slackErrorMessage(response.notification.reason),
       );
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : 'Não foi possível reenviar.');
