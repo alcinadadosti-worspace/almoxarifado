@@ -1,8 +1,33 @@
 import { createApp } from './app';
-import { env } from './config/env';
+import { credentialIssues, env } from './config/env';
 import { datastore } from './data';
 import { notificationStatus } from './services/notifications';
 import { storage } from './services/storage';
+
+/**
+ * Em produção, cair no driver local significa gravar em disco efêmero: a
+ * hospedagem apaga tudo no próximo deploy. Melhor não subir do que aceitar
+ * cadastros que vão desaparecer sem aviso.
+ */
+if (env.isProduction && datastore.driver === 'local' && env.dataDriverPreference !== 'local') {
+  console.error('');
+  console.error('  ✖  Sem credencial do Firebase — o servidor NÃO vai subir.');
+  console.error('');
+  console.error('     Em produção os dados precisam ir para o Firestore. Com o driver');
+  console.error('     local, tudo o que for cadastrado some no próximo deploy.');
+  console.error('');
+  for (const issue of credentialIssues) console.error(`     · ${issue}`);
+  console.error('');
+  console.error('     Como resolver: defina FIREBASE_SERVICE_ACCOUNT com o JSON da conta');
+  console.error('     de serviço em base64 (linha única). No PowerShell:');
+  console.error('');
+  console.error('       [Convert]::ToBase64String(');
+  console.error('         [IO.File]::ReadAllBytes("server\\service-account.json")) | Set-Clipboard');
+  console.error('');
+  console.error('     Para rodar mesmo assim, sem persistência: DATA_DRIVER=local');
+  console.error('');
+  process.exit(1);
+}
 
 const app = createApp();
 

@@ -20,6 +20,9 @@ const list = (key: string): string[] =>
     .map((v) => v.trim())
     .filter(Boolean);
 
+/** Por que a credencial não pôde ser lida — exibido no boot e em /api/health. */
+export const credentialIssues: string[] = [];
+
 /** Lê a credencial do Admin SDK de qualquer uma das formas suportadas. */
 function readServiceAccount(): Record<string, unknown> | null {
   const inline = str('FIREBASE_SERVICE_ACCOUNT');
@@ -28,10 +31,26 @@ function readServiceAccount(): Record<string, unknown> | null {
       const json = inline.trim().startsWith('{')
         ? inline
         : Buffer.from(inline, 'base64').toString('utf8');
-      return JSON.parse(json);
+      const parsed = JSON.parse(json) as Record<string, unknown>;
+      if (!parsed.private_key || !parsed.client_email) {
+        credentialIssues.push(
+          'FIREBASE_SERVICE_ACCOUNT foi lida mas não tem private_key/client_email — ' +
+            'não parece o JSON da conta de serviço.',
+        );
+      } else {
+        return parsed;
+      }
     } catch {
-      console.warn('[env] FIREBASE_SERVICE_ACCOUNT inválido — ignorando.');
+      // Diagnóstico sem vazar a credencial: só forma e tamanho.
+      const preview = inline.slice(0, 12).replace(/[^\x20-\x7E]/g, '?');
+      credentialIssues.push(
+        `FIREBASE_SERVICE_ACCOUNT não pôde ser decodificada (${inline.length} caracteres, ` +
+          `começa com "${preview}…"). Esperado: o JSON da conta de serviço ou ele em base64 ` +
+          'numa única linha, sem aspas ao redor e sem quebras.',
+      );
     }
+  } else {
+    credentialIssues.push('FIREBASE_SERVICE_ACCOUNT está vazia ou não foi definida.');
   }
   // Sem variável definida, procuramos o arquivo padrão em server/service-account.json
   const filePath = str('FIREBASE_SERVICE_ACCOUNT_PATH', './service-account.json');
@@ -77,6 +96,7 @@ export const env = {
     : ['http://localhost:5173', 'http://127.0.0.1:5173'],
 
   dataDriver,
+  dataDriverPreference: driverPreference,
   /** auto | firestore (arquivos no banco) | firebase (Cloud Storage) | local */
   storageDriver: (str('STORAGE_DRIVER', 'auto') as 'auto' | 'firestore' | 'firebase' | 'local'),
   firebase: {

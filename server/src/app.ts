@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import cors from 'cors';
 import express, { type Express, type Request } from 'express';
-import { env } from './config/env';
+import { credentialIssues, env } from './config/env';
 import { datastore, getSettings } from './data';
 import { authRouter } from './http/routes/auth';
 import { dashboardRouter } from './http/routes/dashboard';
@@ -71,6 +71,9 @@ export function createApp(): Express {
       notifications: notificationStatus(),
       slackRoutes: Boolean(slackRouter),
       devAuth: env.allowDevAuth && !env.isProduction,
+      firebaseConfigured: env.firebase.available,
+      // vazio quando esta tudo certo; explica a queda para o driver local
+      credentialIssues: env.firebase.available ? [] : credentialIssues,
       company: settings?.company.name ?? null,
     });
   });

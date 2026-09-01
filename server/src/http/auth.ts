@@ -84,7 +84,10 @@ export async function authenticate(req: Request): Promise<AuthenticatedAdmin> {
   }
 
   if (!env.firebase.available) {
-    throw HttpError.unauthorized('Sessão inválida ou expirada.');
+    console.error(
+      '[auth] token recebido, mas o Firebase Admin nao esta configurado — veja /api/health.',
+    );
+    throw HttpError.unauthorized('Servidor sem credencial do Firebase. Avise o administrador.');
   }
 
   try {
@@ -100,6 +103,9 @@ export async function authenticate(req: Request): Promise<AuthenticatedAdmin> {
     };
   } catch (error) {
     if (error instanceof HttpError) throw error;
+    // Sem este log, qualquer falha de token vira um 401 mudo e indiagnosticavel.
+    const code = (error as { code?: string }).code ?? '';
+    console.error('[auth] verifyIdToken falhou:', code, (error as Error).message);
     throw HttpError.unauthorized('Sessão inválida ou expirada.');
   }
 }
